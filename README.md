@@ -3,7 +3,7 @@
 </div>
 
 
-# INArt: creative deep learning through implicit data representations
+# Neural Canvas: creative deep learning through implicit data representations
 =======================================
 
 The noise vector is not that important, its just a "view" into the output space.
@@ -36,12 +36,13 @@ For the boring test, we just have a network that not too interesting, and differ
 
 ## Usage
 
-INart provides a set of easy-to-use APIs for generating artwork with implicit neural representations. Here's an example of how to generate an image with a 2D Implicit Neural Representation Function z:
+Neural canvas provides a set of easy-to-use APIs for generating artwork with implicit neural representations. Here's an example of how to generate an image with a 2D Implicit Neural Representation Function:
+
 ```python
 import inart
-from inart.models.indf import INDF2D
-from inart.runners import indf_runner
-from imageio import imwrite
+from neural_canvas.models.indf import INDF2D
+from neural_canvas.runners import indf_runner
+from neural_canvas import imwrite
 
 # Define the size of the image
 width = 512
@@ -58,6 +59,25 @@ model.generate(num=10)
 ## Contributions
 
 Contributions are welcome! If you would like to contribute, please fork the project on GitHub and submit a pull request with your changes.
+### Dependency Management
+
+This project uses [Poetry](https://python-poetry.org/) to do environment management. If you want to develop on this project, the best first start is to use Poetry from the beginning. 
+
+To install dependencies (including dev dependencies!) with Poetry:
+```bash
+poetry shell && poetry install 
+```
+You should now be able to run any and all code within the `dev` branch(es). 
+
+### Linting
+
+We primarily use [Black](https://black.readthedocs.io/en/stable/) for linting because it removes a lot of my strong opinions on the way code should look byu forcing everyone to adhere to a style we all partially agree on. 
+
+To run the linter:
+```bash
+make lint
+```
+We will probably request that code by linted before a merged PR, but its not a critical thing.  
 
 ## License
 
