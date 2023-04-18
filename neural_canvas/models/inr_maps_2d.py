@@ -95,7 +95,6 @@ class INRRandomGraph(nn.Module):
         x_ = self.acts_start[3](self.linear_x(x))
         f = self.acts_start[4](x_+ y_+ r_ + latents_)
         f = self.acts_start[5](self.linear1(f))
-        print (f.shape)
         res = self.scale(self.network(f))
         res = self.act_out(res)
         return res

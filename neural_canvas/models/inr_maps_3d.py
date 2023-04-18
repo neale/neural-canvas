@@ -60,7 +60,6 @@ class INRRandomGraph3D(nn.Module):
                 p,
                 k)
         else:
-            print ('loading old graph')
             self.graph = self.load_graph_str(graph)
 
         self.network = TorchGraph(self.graph,
@@ -174,8 +173,6 @@ class INRLinearMap3D(nn.Module):
         return g
     
     def forward(self, inputs, latents):
-        print (inputs.shape)
-
         x, y, z, r = inputs[:, 0, ...], inputs[:, 1, ...], inputs[:, 2, ...], inputs[:, 3, ...]
         latents_pt = self.linear_latents(latents)
         x_pt = self.linear_x(x)

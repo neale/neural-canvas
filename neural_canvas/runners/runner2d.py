@@ -110,7 +110,7 @@ class RunnerINRF2D:
             else:
                 frame = (frame * 255).astype(np.uint8)
             if self.skip_blank_generations:
-                if np.abs(frame.max() - frame.min()) < 5:
+                if np.abs(frame.max() - frame.min()) < 15:
                     self.logger.info('skipping blank output')
                     continue
             metadata.append(self.model._metadata(meta_latents))
