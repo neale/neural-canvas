@@ -1,5 +1,5 @@
 <div align="center">
-<img src="https://raw.githubusercontent.com/neale/Inart/main/inart/assets/logo.jpg" alt="logo"></img>
+<img src="https://raw.githubusercontent.com/neale/neural-canvas/main/neural_canvas/assets/logo.jpg" alt="logo"></img>
 </div>
 
 
