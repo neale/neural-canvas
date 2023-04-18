@@ -8,8 +8,8 @@ import collections
 
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
-from networkx.drawing.nx_agraph import graphviz_layout, to_agraph
-from ops import *
+from neural_canvas.models.ops import *
+
 
 Node = collections.namedtuple('Node', ['id', 'inputs', 'type'])
 
@@ -90,7 +90,7 @@ def plot_graph(g, path=None, plot=False):
     sio.write(png_str)
     sio.seek(0)
     img = mpimg.imread(sio)
-    imgplot = plt.imshow(img, aspect='equal')
+    plt.imshow(img, aspect='equal')
     if path:
         plt.savefig(path)
     if plot:
@@ -103,14 +103,34 @@ def randact(activation_set='large'):
         acts = [nn.ELU, nn.Hardtanh, nn.LeakyReLU, nn.LogSigmoid,
                 nn.SELU, nn.GELU, nn.CELU, nn.Softshrink, nn.Sigmoid,
                 SinLayer, CosLayer, Gaussian, nn.Softplus, nn.Mish,
-                nn.Tanh, nn.ReLU]
+                nn.Tanh, ScaleAct, AddAct]
     else:
         acts = [nn.Sigmoid, SinLayer, CosLayer, Gaussian, nn.Softplus, nn.Mish,
-                 nn.Tanh, nn.ReLU]
+                nn.Tanh, ScaleAct, AddAct]
 
     x = torch.randint(0, len(acts), (1,))
     return acts[x]()
 
+
+class ScaleOp(nn.Module):
+    def __init__(self):
+        super(ScaleOp, self).__init__()
+        r = torch.ones(1,).uniform_(-1, 1)
+        self.r = nn.Parameter(r)
+
+    def forward(self, x):
+        return x * self.r
+
+
+class AddOp(nn.Module):
+    def __init__(self):
+        super(AddOp, self).__init__()
+        r = torch.ones(1,).uniform_(-.5, .5)
+        self.r = nn.Parameter(r)
+
+    def forward(self, x):
+        return x + self.r
+    
 
 class LinearActOp(nn.Module):
     def __init__(self, in_d, out_d, actset):
@@ -179,20 +199,20 @@ class RandNodeOP(nn.Module):
 
 
 class TorchGraph(nn.Module):
-    def __init__(self, graph, in_dim, hidden_dim, out_dim, combine, actset):
+    def __init__(self, graph, in_dim, hidden_dim, out_dim, combine, activation_set):
         super(TorchGraph, self).__init__()
         self.nodes, self.input_nodes, self.output_nodes = get_graph_info(graph)
         self.combine = combine
         self.node_ops = nn.ModuleList()
         for node in self.nodes:
-            self.node_ops.append(RandNodeOP(node, in_dim, hidden_dim, actset))
+            self.node_ops.append(RandNodeOP(node, in_dim, hidden_dim, activation_set))
         if combine:
             self.linear_out = nn.Linear(hidden_dim, out_dim)
-            self.act_out = randact(actset)
+            self.act_out = randact(activation_set)
         else:
             self.linear_out = [nn.Linear(hidden_dim, 1) for _ in range(len(
                 self.output_nodes))]
-            self.act_out = [randact(actset) for _ in range(len(self.output_nodes))]
+            self.act_out = [randact(activation_set) for _ in range(len(self.output_nodes))]
     
     def forward(self, x):
         out = {}

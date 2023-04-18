@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "inart"
+name = "neural_canvas"
 version = "0.1.0"
 description = "creative-deep-learning-through-implicit-neural-representations"
 authors = ["neale <nealeratzlaff@gmail.com>"]
@@ -17,6 +17,8 @@ tifffile = "^2023.4.12"
 moviepy = "^1.0.3"
 scipy = "^1.10.1"
 scikit-learn = "^1.2.2"
+pyyaml = "^6.0"
+matplotlib = "^3.7.1"
 
 [tool.poetry.group.dev.dependencies]
 clip = "^0.2.0"

@@ -2,39 +2,45 @@ import torch
 import torch.nn as nn
 import networkx
 
-from ops import *
-from torchgraph import randact, build_random_graph, TorchGraph
+from neural_canvas.models.ops import *
+from neural_canvas.models.torchgraph import randact, build_random_graph, TorchGraph
 
 
 class INRRandomGraph3D(nn.Module):
     def __init__(self,
-                 noise_dim,
+                 latent_dim,
                  c_dim,
                  layer_width,
-                 nodes,
+                 num_graph_nodes,
                  graph=None,
-                 activations='random'):
+                 activations='basic',
+                 final_activation='sigmoid',
+                 name='INRRandomGraph3D'):
         super(INRRandomGraph3D, self).__init__()
-        self.noise_dim = noise_dim
+        self.latent_dim = latent_dim
         self.c_dim = c_dim
         self.layer_width = layer_width
         self.input_nodes = 1
-        self.nodes = nodes
-        self.name = 'INRRandomGraph3D'
-
-        self.linear_noise = nn.Linear(self.noise_dim, self.layer_width)
+        self.nodes = num_graph_nodes
+        self.activations = activations
+        self.final_activation = final_activation
+        
+        self.name = name
+        self.linear_latents = nn.Linear(self.latent_dim, self.layer_width)
         self.linear_x = nn.Linear(1, self.layer_width, bias=False)
         self.linear_y = nn.Linear(1, self.layer_width, bias=False)
         self.linear_z = nn.Linear(1, self.layer_width, bias=False)
         self.linear_r = nn.Linear(1, self.layer_width, bias=False)
         self.linear1 = nn.Linear(self.layer_width, self.layer_width)
+        self.linear2 = nn.Linear(self.layer_width, self.layer_width)
+        self.scale = ScaleAct()
         if self.activations == 'random':
-            acts = [randact(activation_set='large') for _ in range(8)]
+            acts = [randact(activation_set='large') for _ in range(7)]
         elif self.activations == 'basic':
-            acts = [nn.Tanh(), nn.ELU(), nn.Softplus(), nn.Tanh(), 
-                    Gaussian(), SinLayer()]
+            acts = [nn.SiLU(), nn.ELU(), nn.Softplus(), nn.Tanh(), 
+                    Gaussian(), SinLayer(), nn.GELU()]
         elif hasattr(torch.nn, activations):
-            acts = [getattr(torch.nn, activations)() for _ in range(8)]
+            acts = [getattr(torch.nn, activations)() for _ in range(7)]
         else:
             raise ValueError('activations must be basic, random, '\
                              'or else a valid torch.nn activation')
@@ -63,13 +69,15 @@ class INRRandomGraph3D(nn.Module):
                                   self.c_dim,
                                   combine,
                                   activation_set='large')
-        if self.clip_loss:
-            self.act_out = torch.tanh
-        else:
-            self.act_out = torch.sigmoid
+        if final_activation == 'sigmoid':
+            self.act_out = nn.Sigmoid()
+        elif final_activation == 'tanh':
+            self.act_out = nn.Tanh()
+        elif final_activation is None:
+            self.act_out = nn.Identity()
 
     def generate_act_list(self):
-        acts = [randact(activation_set='large') for _ in range(9)]
+        acts = [randact(activation_set='large') for _ in range(7)]
         self.acts = nn.ModuleList(acts)
 
     def get_graph_str(self):
@@ -79,33 +87,38 @@ class INRRandomGraph3D(nn.Module):
     def load_graph_str(self, s):
         return networkx.parse_graphml(s, node_type=int)
 
-    def forward(self, x, y, z, r, noise):
-        noise_ = self.acts_start[0](self.linear_noise(noise))
+    def forward(self, inputs, latents):
+        x, y, z, r = inputs[0, 0, ...], inputs[0, 1, ...], inputs[0, 2, ...], inputs[0, 3, ...]
+        latents_ = self.acts_start[0](self.linear_latents(latents))
         z_ = self.acts_start[1](self.linear_z(z))
         r_ = self.acts_start[2](self.linear_r(r))
         y_ = self.acts_start[3](self.linear_y(y))
         x_ = self.acts_start[4](self.linear_x(x))
-        f = self.acts_start[5](z_ + x_ + y_ + r_ + noise_)
+        f = self.acts_start[5](z_ + x_ + y_ + r_ + latents_)
         f = self.acts_start[6](self.linear1(f))
-        res = self.network(f)
+        res = self.scale(self.network(f))
         res = self.act_out(res)
         return res
 
 
 class INRLinearMap3D(nn.Module):
     def __init__(self,
-                 noise_dim,
+                 latent_dim,
                  c_dim,
                  layer_width,
                  activations='basic',
-                 clip_loss=False,
+                 final_activation='sigmoid',
                  name='INRLinearMap3D'):
         super(INRLinearMap3D, self).__init__()
-        self.noise_dim = noise_dim
+        self.latent_dim = latent_dim
         self.c_dim = c_dim
         self.layer_width = layer_width
+        self.activations = activations
+        self.final_activation = final_activation
+
         self.name = name
-        self.linear_noise = nn.Linear(self.z_dim, self.layer_width)
+        
+        self.linear_latents = nn.Linear(self.latent_dim, self.layer_width)
         self.linear_x = nn.Linear(1, self.layer_width, bias=False)
         self.linear_y = nn.Linear(1, self.layer_width, bias=False)
         self.linear_z = nn.Linear(1, self.layer_width, bias=False)
@@ -117,24 +130,25 @@ class INRLinearMap3D(nn.Module):
         self.linear4 = nn.Linear(self.layer_width, self.c_dim)
 
         if self.activations == 'random':
-            acts = [randact(activation_set='large') for _ in range(9)]
+            acts = [randact(activation_set='large') for _ in range(5)]
         elif self.activations == 'basic':
-            acts = [nn.Tanh(), nn.ELU(), nn.Softplus(), nn.Tanh(), SinLayer(),
-                    nn.Tanh(), nn.ELU(), nn.Softplus(), CosLayer()]
+            acts = [nn.GELU(), nn.Tanh(), nn.ELU(), SinLayer(), ScaleAct()]
         elif hasattr(torch.nn, activations):
-            acts = [getattr(torch.nn, activations)() for _ in range(9)]
+            acts = [getattr(torch.nn, activations)() for _ in range(5)]
         else:
             raise ValueError('activations must be `basic`, `random`, '\
                              'or else a valid torch.nn activation')
         self.acts = nn.ModuleList(acts)
 
-        if clip_loss:
-            self.act_out = torch.tanh
-        else:
+        if self.final_activation == 'sigmoid':
             self.act_out = torch.sigmoid
+        elif self.final_activation == 'tanh':
+            self.act_out = torch.tanh
+        elif final_activation is None:
+            self.act_out = nn.Identity()
 
     def generate_new_acts(self):
-        acts = [randact(activation_set='large') for _ in range(9)]
+        acts = [randact(activation_set='large') for _ in range(5)]
         self.acts = nn.ModuleList(acts)    
 
     def get_graph(self):
@@ -159,19 +173,21 @@ class INRLinearMap3D(nn.Module):
 
         return g
     
-    def forward(self, x, y, z, r, noise):
-        noise_pt = self.acts[0](self.linear_noise(noise))
-        x_pt = self.acts[1](self.linear_x(x))
-        y_pt = self.acts[2](self.linear_y(y))
-        r_pt = self.acts[3](self.linear_r(r))
-        z_pt = self.acts[4](self.linear_z(z))
-        r_pt = self.acts[5](self.linear_r(r))
-        z = z_pt + x_pt + y_pt + r_pt + noise_pt
-        z = self.acts[4](z)
-        z = self.acts[5](self.linear1(z))
-        z = self.acts[6](self.linear2(z))
-        z = self.acts[7](self.linear3(z))
-        x = .5 * self.acts[8](self.linear4(z)) + .5
+    def forward(self, inputs, latents):
+        print (inputs.shape)
+
+        x, y, z, r = inputs[:, 0, ...], inputs[:, 1, ...], inputs[:, 2, ...], inputs[:, 3, ...]
+        latents_pt = self.linear_latents(latents)
+        x_pt = self.linear_x(x)
+        y_pt = self.linear_y(y)
+        r_pt = self.linear_r(r)
+        z_pt = self.linear_z(z)
+        z = z_pt + x_pt + y_pt + r_pt + latents_pt
+        z = self.acts[0](z)
+        z = self.acts[1](self.linear1(z))
+        z = self.acts[2](self.linear2(z))
+        z = self.acts[3](self.linear3(z))
+        x = self.acts[4](self.linear4(z))
         x = self.act_out(x)
         return x
 
@@ -179,35 +195,38 @@ class INRLinearMap3D(nn.Module):
 
 class INRConvMap3D(nn.Module):
     def __init__(self,
-                 noise_dim,
+                 latent_dim,
                  c_dim,
-                 layer_width,
+                 feature_dim,
                  activations='basic',
-                 clip_loss=False,
+                 final_activation='sigmoid',
                  name='INRConvMap3D'):
         super(INRConvMap3D, self).__init__()
-        self.noise_dim = noise_dim
+        self.latent_dim = latent_dim
         self.c_dim = c_dim
-        self.layer_width = layer_width
+        self.feature_dim = feature_dim
+        self.activations = activations
+        self.final_activation = final_activation
+
         self.name = name
-        self.feat_dim = 24
-        self.conv1 = nn.Conv3d(2, self.feat_dim, kernel_size=1, stride=1, padding='same')
-        self.conv2 = nn.Conv3d(self.feat_dim, self.feat_dim, kernel_size=1, stride=1, padding='same')
-        self.conv3 = nn.Conv3d(self.feat_dim, self.feat_dim, kernel_size=1, stride=1, padding='same')
-        self.conv4 = nn.Conv3d(self.feat_dim, self.feat_dim, kernel_size=1, stride=1, padding='same')
-        self.conv5 = nn.Conv3d(self.feat_dim, self.feat_dim, kernel_size=1, stride=1, padding='same')
-        self.conv6 = nn.Conv3d(self.feat_dim, self.feat_dim, kernel_size=1, stride=1, padding='same')
-        self.conv7 = nn.Conv3d(self.feat_dim, self.feat_dim, kernel_size=1, stride=1, padding='same')
-        self.conv8 = nn.Conv3d(self.feat_dim, self.feat_dim, kernel_size=1, stride=1, padding='same')
-        self.conv_rgb = nn.Conv3d(self.feat_dim, 3, kernel_size=1, stride=1, padding='same')
+
+        self.conv1 = nn.Conv3d(2, self.feature_dim, kernel_size=1, stride=1, padding='same')
+        self.conv2 = nn.Conv3d(self.feature_dim, self.feature_dim, kernel_size=1, stride=1, padding='same')
+        self.conv3 = nn.Conv3d(self.feature_dim, self.feature_dim, kernel_size=1, stride=1, padding='same')
+        self.conv4 = nn.Conv3d(self.feature_dim, self.feature_dim, kernel_size=1, stride=1, padding='same')
+        self.conv5 = nn.Conv3d(self.feature_dim, self.feature_dim, kernel_size=1, stride=1, padding='same')
+        self.conv6 = nn.Conv3d(self.feature_dim, self.feature_dim, kernel_size=1, stride=1, padding='same')
+        self.conv7 = nn.Conv3d(self.feature_dim, self.feature_dim, kernel_size=1, stride=1, padding='same')
+        self.conv8 = nn.Conv3d(self.feature_dim, self.feature_dim, kernel_size=1, stride=1, padding='same')
+        self.conv_rgb = nn.Conv3d(self.feature_dim, 3, kernel_size=1, stride=1, padding='same')
 
         if self.activations == 'random':
-            acts = [randact(activation_set='large') for _ in range(9)]
+            acts = [randact(activation_set='large') for _ in range(8)]
         elif self.activations == 'basic':
-            acts = [nn.Tanh(), nn.ELU(), nn.Softplus(), nn.Tanh(), SinLayer(),
-                    nn.Tanh(), nn.ELU(), nn.Softplus(), CosLayer()]
+            acts = [nn.GELU(), nn.ELU(), nn.Softplus(), nn.Tanh(), SinLayer(),
+                    nn.Tanh(), nn.ELU(), nn.Softplus(), CosLayer(), ScaleAct()]
         elif hasattr(torch.nn, activations):
-            acts = [getattr(torch.nn, activations)() for _ in range(9)]
+            acts = [getattr(torch.nn, activations)() for _ in range(8)]
         else:
             raise ValueError('activations must be `basic`, `random`, '\
                              'or else a valid torch.nn activation')
@@ -215,18 +234,18 @@ class INRConvMap3D(nn.Module):
 
         self.norms = nn.ModuleList([nn.Identity() for _ in range(8)])
 
-        if clip_loss:
-            self.act_out = torch.tanh
-        else:
+        if final_activation == 'sigmoid':
             self.act_out = torch.sigmoid
+        elif final_activation == 'tanh':
+            self.act_out = torch.tanh
 
     def generate_new_acts(self):
-        acts = [randact(activation_set='large') for _ in range(9)]
+        acts = [randact(activation_set='large') for _ in range(8)]
         self.acts = nn.ModuleList(acts)    
     
-    def forward(self, x, y, r, noise, extra=None):
+    def forward(self, inputs, latents):
         raise NotImplementedError
-        x = torch.stack([x, y, r, noise], 0).unsqueeze(0)
+        x = torch.cat([inputs, latents], 0).unsqueeze(0)
         #x = torch.stack([x, y], 0).unsqueeze(0)
         x = self.acts[0](self.norms[0](self.conv1(x)))
         x = self.acts[1](self.norms[1](self.conv2(x)))
@@ -241,7 +260,12 @@ class INRConvMap3D(nn.Module):
 
 if __name__ == '__main__':
     import time
+    import numpy as np
     times = []
     for _ in range(20):
+        s = time.time()
         model = INRRandomGraph3D()
+        e = time.time()
+        times.append(e - s)
+    print('mean time to load default WS 3D Graph: ', np.mean(times))
     print(model)

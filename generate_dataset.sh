@@ -1,5 +1,5 @@
 #!/bin/bash
-END=500
+END=2000
 for ((i=0;i<END;i++)); do
-    python3 run_cppn_3d.py --output_dir 3D_test/3d_1024_rgba --c_dim 4
+    python3 examples/image_generate.py --conf examples/generate_2d_conf.yaml
 done

@@ -5,7 +5,7 @@ import scipy.stats as stats
 from sklearn.datasets import make_blobs
 
 
-def coordinates_2D(x_dim, y_dim, batch_size, zoom, pan, scale, device, as_mat=False):
+def coordinates_2D(x_dim, y_dim, batch_size, zoom, pan, scale, as_mat=False):
     xpan, ypan = pan
     xzoom, yzoom = zoom
     n_pts = x_dim * y_dim
@@ -13,7 +13,7 @@ def coordinates_2D(x_dim, y_dim, batch_size, zoom, pan, scale, device, as_mat=Fa
     x_range = scale * (torch.arange(x_dim) - (x_dim - 1) / xpan) / (x_dim - 1) / xzoom
     y_range = scale * (torch.arange(y_dim) - (y_dim - 1) / ypan) / (y_dim - 1) / yzoom
     
-    x_mat, y_mat = torch.meshgrid(x_range, y_range)
+    x_mat, y_mat = torch.meshgrid(x_range, y_range, indexing='ij')
     r_mat = torch.sqrt(x_mat * x_mat + y_mat * y_mat)
     if as_mat:
         return x_mat, y_mat, r_mat, n_pts
@@ -21,14 +21,10 @@ def coordinates_2D(x_dim, y_dim, batch_size, zoom, pan, scale, device, as_mat=Fa
     y_vec = y_mat.flatten().repeat(batch_size).view(batch_size * n_pts, -1)
     r_vec = r_mat.flatten().repeat(batch_size).view(batch_size * n_pts, -1)
     
-    x_vec = x_vec.float().to(device)
-    y_vec = y_vec.float().to(device)
-    r_vec = r_vec.float().to(device)
-    
-    return x_vec, y_vec, r_vec, n_pts
+    return x_vec, y_vec, r_vec
 
 
-def coordinates_3D(x_dim, y_dim, z_dim, batch_size, zoom, pan, scale, device, as_mat=False):
+def coordinates_3D(x_dim, y_dim, z_dim, batch_size, zoom, pan, scale, as_mat=False):
     xpan, ypan, zpan = pan
     xzoom, yzoom, zzoom = zoom
     n_pts = x_dim * y_dim * z_dim
@@ -37,7 +33,7 @@ def coordinates_3D(x_dim, y_dim, z_dim, batch_size, zoom, pan, scale, device, as
     y_range = scale * (torch.arange(y_dim) - (y_dim - 1) / ypan) / (y_dim - 1) / yzoom
     z_range = scale * (torch.arange(z_dim) - (z_dim - 1) / zpan) / (z_dim - 1) / zzoom
     
-    x_mat, y_mat, z_mat = torch.meshgrid(x_range, y_range, z_range)
+    x_mat, y_mat, z_mat = torch.meshgrid(x_range, y_range, z_range, indexing='ij')
     r_mat = torch.sqrt(x_mat * x_mat + y_mat * y_mat + z_mat * z_mat)
     if as_mat:
         return x_mat, y_mat, r_mat, n_pts
@@ -46,12 +42,7 @@ def coordinates_3D(x_dim, y_dim, z_dim, batch_size, zoom, pan, scale, device, as
     z_vec = z_mat.flatten().repeat(batch_size).view(batch_size * n_pts, -1)
     r_vec = r_mat.flatten().repeat(batch_size).view(batch_size * n_pts, -1)
     
-    x_vec = x_vec.float().to(device)
-    y_vec = y_vec.float().to(device)
-    z_vec = z_vec.float().to(device)
-    r_vec = r_vec.float().to(device)
-    
-    return x_vec, y_vec, z_vec, r_vec, n_pts
+    return x_vec, y_vec, z_vec, r_vec
 
 
 def mixture_2D(x_dim, y_dim, device):

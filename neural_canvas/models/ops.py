@@ -12,7 +12,7 @@ class Gaussian(nn.Module):
 
 
 class SinLayer(nn.Module):
-    def __init__(self):
+    def __init__(self, scale=1.0):
         super(SinLayer, self).__init__()
 
     def forward(self, x):
@@ -27,19 +27,21 @@ class CosLayer(nn.Module):
         return torch.cos(x)
 
 
-class ScaleOp(nn.Module):
+class ScaleAct(nn.Module):
     def __init__(self):
-        super(ScaleOp, self).__init__()
-        self.r = torch.ones(1,).uniform_(-1, 1)
-    
+        super(ScaleAct, self).__init__()
+        r = torch.ones(1,).uniform_(1, 10)
+        self.r = nn.Parameter(r)
+
     def forward(self, x):
         return x * self.r
 
 
-class AddOp(nn.Module):
+class AddAct(nn.Module):
     def __init__(self):
-        super(AddOp, self).__init__()
-        self.r = torch.ones(1,).uniform_(-.5, .5)
+        super(AddAct, self).__init__()
+        r = torch.ones(1,).uniform_(1, 10)
+        self.r = nn.Parameter(r)
 
     def forward(self, x):
         return x + self.r
