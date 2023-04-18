@@ -4,7 +4,7 @@
 
 
 # Neural Canvas: creative deep learning through implicit data representations
-=======================================
+
 
 The noise vector is not that important, its just a "view" into the output space.
 
@@ -39,7 +39,6 @@ For the boring test, we just have a network that not too interesting, and differ
 Neural canvas provides a set of easy-to-use APIs for generating artwork with implicit neural representations. Here's an example of how to generate an image with a 2D Implicit Neural Representation Function:
 
 ```python
-import inart
 from neural_canvas.models.indf import INDF2D
 from neural_canvas.runners import indf_runner
 from neural_canvas import imwrite
@@ -51,7 +50,7 @@ height = 512
 # Create a 2D implicit neural representation model
 model = INDF2D(width, height)
 # Wrap model in a runner to allow generation and saving utilities
-model = indf_runner(model, logdir='outputs/hello_indf')
+model = indf_runner(model, logdir='outputs/hello_canvas')
 # Generate and save 10 images
 model.generate(num=10)
 ```
