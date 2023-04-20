@@ -123,7 +123,7 @@ class RunnerINRF2D:
             frames.append(frame)
         return frames, metadata
     
-    def reinit_model_from_metadata(self, path, output_shape):
+    def reinit_model_from_metadata(self, output_shape, path=None, metadata=None):
         """
         Reinitialize a model from a metadata file
 
@@ -133,7 +133,8 @@ class RunnerINRF2D:
         Returns:
             latent: (torch.FloatTensor) latent vector used for generation    
         """
-        _, metadata = utils.load_tif_metadata(path)
+        if metadata is None:
+            _, metadata = utils.load_tif_metadata(path)
         assert len(output_shape) == 3, f'Invalid output shape: {output_shape}'
         model = INRF2D(output_shape=output_shape,
                        output_dir=self.output_dir,
@@ -192,7 +193,7 @@ class RunnerINRF2D:
             basename = os.path.basename(path)
             save_fn = os.path.join(self.output_dir, f'{basename[:-4]}_reproduce')
             # load metadata from given tif file(s)
-            latent = self.reinit_model_from_metadata(path, output_shape)
+            latent = self.reinit_model_from_metadata(path=path, output_shape=output_shape)
             frames, metadata = self.run_frames(latent,
                                                num_samples=num_samples,
                                                zoom_schedule=zoom_schedule,

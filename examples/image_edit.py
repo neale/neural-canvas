@@ -1,12 +1,9 @@
 import os
 import yaml
 import argparse
-
-import numpy as np
 import torch
 
 from neural_canvas.utils import schedulers
-from neural_canvas.models.inrf import INRF2D
 from neural_canvas.runners import runner2d
 
 
@@ -101,7 +98,7 @@ if __name__ == '__main__':
         runner.regen_frames(path=args.regen_image_path,
                             output_shape=(args.regen_x_dim, args.regen_y_dim, args.regen_c_dim),
                             num_samples=args.num_samples,
-                            splits=1,
+                            splits=50,
                             zoom_schedule=zoom_schedule,
                             pan_schedule=pan_schedule,
                             save_video=args.save_video_from_frames)

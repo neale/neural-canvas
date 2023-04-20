@@ -20,7 +20,8 @@ def load_args(argv=None):
     parser.add_argument('--mlp_layer_width', default=32, type=int, help='net width')    
     parser.add_argument('--activations', default='fixed', type=str,
         help='activation set for generator')
-    parser.add_argument('--final_activation', default='sigmoid', type=str, help='last activation')
+    parser.add_argument('--final_activation', default=None, type=str, help='last activation',
+        choices=['sigmoid', 'tanh', None])
     parser.add_argument('--graph_topology', default='mlp_fixed', type=str,
         help='graph style to use for generator', choices=['mlp_fixed', 'WS'])
     parser.add_argument('--batch_size', default=1, type=int)
