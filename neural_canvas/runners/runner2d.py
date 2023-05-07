@@ -109,6 +109,7 @@ class RunnerINRF2D:
                 frame = ((frame + 1.) * 127.5).astype(np.uint8)
             else:
                 frame = (frame * 255).astype(np.uint8)
+            
             if self.skip_blank_generations:
                 if np.abs(frame.max() - frame.min()) < 15:
                     self.logger.info('skipping blank output')
@@ -191,7 +192,14 @@ class RunnerINRF2D:
             ValueError(f'Invalid path: {path}')
         for path in image_paths:
             basename = os.path.basename(path)
+            if basename.endswith('reproduce'):
+                basename = basename.split('_reproduce')[0]
             save_fn = os.path.join(self.output_dir, f'{basename[:-4]}_reproduce')
+            if os.path.exists(save_fn+'_0_rgb.png'):
+                self.logger.info(f'Found existing output at: {save_fn}')
+                continue
+            else:
+                print ('Running reproduction for: ', path, 'saving at: ', save_fn)
             # load metadata from given tif file(s)
             latent = self.reinit_model_from_metadata(path=path, output_shape=output_shape)
             frames, metadata = self.run_frames(latent,
@@ -200,6 +208,9 @@ class RunnerINRF2D:
                                                pan_schedule=pan_schedule,
                                                splits=splits,
                                                autosave=False)
+            if len(frames) == 0:
+                self.logger.info(f'No/Bad frames generated for: {path}')
+                continue
             self.logger.info(f'saving {len(frames)} TIFF/PNG images at: {save_fn} of size: {frames[0].shape}')
             for i, (frame, meta) in enumerate(zip(frames, metadata)):
                 utils.write_image(path=f'{save_fn}_{i}', img=frame, suffix='png', colormaps=self.colormaps)

@@ -98,7 +98,7 @@ def umap_metadata(metadata, runner):
     return umap_embedding
     
 def load_args(argv=None):
-    parser = argparse.ArgumentParser(description='INRF2D-edit-config')
+    parser = argparse.ArgumentParser(description='analysis-config')
     parser.add_argument('--conf', default=None, type=str, help='args config file')
     parser.add_argument('--seed', default=42, type=int, help='random seed')
     parser.add_argument('--dataset_path', type=str, default=None, help='path to image to regenerate')
