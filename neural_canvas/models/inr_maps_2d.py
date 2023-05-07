@@ -201,10 +201,10 @@ class INRConvMap(nn.Module):
         self.feature_dim = feature_dim
         self.activations = activations
         self.final_activation = final_activation
-
+        self.input_channels = latent_dim + c_dim
         self.name = name
 
-        self.conv1 = nn.Conv2d(2, self.feature_dim, kernel_size=1, stride=1, padding='same')
+        self.conv1 = nn.Conv2d(self.input_channels, self.feature_dim, kernel_size=1, stride=1, padding='same')
         self.conv2 = nn.Conv2d(self.feature_dim, self.feature_dim, kernel_size=1, stride=1, padding='same')
         self.conv3 = nn.Conv2d(self.feature_dim, self.feature_dim, kernel_size=1, stride=1, padding='same')
         self.conv4 = nn.Conv2d(self.feature_dim, self.feature_dim, kernel_size=1, stride=1, padding='same')
@@ -212,7 +212,7 @@ class INRConvMap(nn.Module):
         self.conv6 = nn.Conv2d(self.feature_dim, self.feature_dim, kernel_size=1, stride=1, padding='same')
         self.conv7 = nn.Conv2d(self.feature_dim, self.feature_dim, kernel_size=1, stride=1, padding='same')
         self.conv8 = nn.Conv2d(self.feature_dim, self.feature_dim, kernel_size=1, stride=1, padding='same')
-        self.conv_rgb = nn.Conv2d(self.feature_dim, 3, kernel_size=1, stride=1, padding='same')
+        self.conv_rgb = nn.Conv2d(self.feature_dim, c_dim, kernel_size=1, stride=1, padding='same')
 
         if self.activations == 'random':
             acts = [randact(activation_set='large') for _ in range(9)]

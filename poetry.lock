@@ -1528,6 +1528,21 @@ files = [
 six = ">=1.5"
 
 [[package]]
+name = "pytorch-msssim"
+version = "0.2.1"
+description = "Fast and differentiable MS-SSIM and SSIM for pytorch."
+category = "main"
+optional = false
+python-versions = "*"
+files = [
+    {file = "pytorch_msssim-0.2.1-py3-none-any.whl", hash = "sha256:f98f75efebe71bc221b4a6dd1a4616a153a1edb74a7bd955f0d0a9280480a108"},
+    {file = "pytorch_msssim-0.2.1.tar.gz", hash = "sha256:d383a1e2689a60e13fddeecee4e0fcace999bde558767b4eb1763decb7bfe3bb"},
+]
+
+[package.dependencies]
+torch = "*"
+
+[[package]]
 name = "pyyaml"
 version = "6.0"
 description = "YAML parser and emitter for Python"
@@ -2083,4 +2098,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "1d36dcfa016ac373c56e620d40de11ab02f8646541fe1c18923b8512451c436f"
+content-hash = "c592f6ba1bcddb97daef33daebde5af07d838b7aee553a9871b63238d3793216"

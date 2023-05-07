@@ -26,7 +26,7 @@ def lerp(z1, z2, n):
     return states
 
 
-def load_image_as_tensor(path, output_dir, device):
+def load_image_as_tensor(path, output_dir, device='cpu'):
     target = cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
     target = target / 255.
     target = torch.from_numpy(target).permute(2, 0, 1).unsqueeze(0).float().to(device)

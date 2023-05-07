@@ -146,7 +146,7 @@ class INRF2D(INRFBase):
 
         elif graph_topology == 'conv_fixed':
             map_fn = INRConvMap(
-                self.latent_dim, self.c_dim, self.latent_scale, feature_dim=conv_feature_map_size,
+                self.latent_dim, self.c_dim, feature_dim=conv_feature_map_size,
                 activations=activations, final_activation=final_activation)
             
         elif graph_topology == 'WS':
@@ -218,24 +218,29 @@ class INRF2D(INRFBase):
         else:
             x_dim, y_dim = self.x_dim, self.y_dim
         if latents is None:
-            latents = torch.ones(batch_size, 1, self.latent_dim).uniform_(-2.0, 2.0)
+            if self.graph_topology == 'conv_fixed':
+                latents = torch.ones(batch_size, self.latent_dim, x_dim, y_dim).uniform_(-2.0, 2.0)
+            else:
+                latents = torch.ones(batch_size, 1, self.latent_dim).uniform_(-2.0, 2.0)
         else:
             assert latents.shape == (batch_size, 1, self.latent_dim)
         latents_to_save = latents.clone().detach().cpu()
 
         latents = latents.to(self.device)
-        latents = latents.reshape(batch_size, 1, self.latent_dim)
-        one_vec = torch.ones(x_dim*y_dim, 1).float().to(self.device)
-        latents = (latents * one_vec * self.latent_scale).unsqueeze(0)
+        if self.graph_topology != 'conv_fixed': # then reshape to long flat vector
+            latents = latents.reshape(batch_size, 1, self.latent_dim)
+            one_vec = torch.ones(x_dim*y_dim, 1).float().to(self.device)
+            latents = (latents * one_vec * self.latent_scale).unsqueeze(0)
         if self.inputs is None or self.inputs.shape[-2:] != (x_dim, y_dim):
-            self.logger.info('Detected missing or incompatible 2D inputs, initializing ...')
+            self.logger.debug('Detected missing or incompatible 2D inputs, initializing ...')
             inputs = coordinates_2D(x_dim, 
                                     y_dim,
                                     batch_size=batch_size,
                                     zoom=zoom,
                                     pan=pan,
                                     scale=self.latent_scale,
-                                    as_mat=False)
+                                    as_mat=self.graph_topology=='conv_fixed')
+            
             inputs = torch.stack(inputs, 0).unsqueeze(0).repeat(batch_size, 1, 1, 1)
     
         return latents.to(self.device), inputs.to(self.device), latents_to_save
@@ -291,6 +296,52 @@ class INRF2D(INRFBase):
             raise ValueError(f'splits must be >= 1, got {splits}')
         self.logger.debug(f'Output Frame Shape: {frame.shape}')
         return frame
+
+    def fit(self,
+            n_iters,
+            target,
+            loss,
+            optimizer,
+            scheduler=None,
+            inputs=None, 
+            test_inputs=None,
+            test_resolution=(512, 512, 3)):
+        """optimizes parameters of 2D INRF to fit a target image
+
+        Args:
+            target (torch tensor): target image to fit
+            loss (callable): loss function
+            optimizer (torch optimizer): optimizer
+            scheduler (torch scheduler, optional): scheduler
+        """
+        assert 'conv' in self.graph_topology, 'fitting only supported for conv models'
+        if inputs is None:
+            latents, inputs, _ = self.init_latent_inputs()
+        else:
+            latents, inputs = inputs
+        if test_inputs is None:
+            test_latents, test_inputs, _ = self.init_latent_inputs(
+                output_shape=test_resolution)
+        else:
+            test_latents, test_inputs = test_inputs
+        target = target.to(self.device)
+        for _ in range(n_iters):
+            optimizer.zero_grad()
+            frame = self.map_fn(inputs, latents)
+            loss_val = loss(frame, target)
+            loss_val.backward()
+            optimizer.step()
+            if scheduler is not None:
+                scheduler.step()
+        if self.map_fn.act_out == 'tanh':
+            frame = (frame + 1) / 2.
+        frame = frame[0].permute(1, 2, 0).detach().cpu().numpy() * 255.
+
+        test_frame = self.map_fn(test_inputs, test_latents)[0]
+        if self.map_fn.act_out == 'tanh':
+            test_frame = (test_frame + 1) / 2.
+        test_frame = test_frame.permute(1, 2, 0).detach().cpu().numpy() * 255.
+        return frame, test_frame, loss_val
 
 
 class INRF3D(INRFBase):

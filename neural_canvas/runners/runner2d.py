@@ -8,8 +8,9 @@ import torch
 import logging
 
 from neural_canvas.utils import utils
+from neural_canvas.losses import losses
 from neural_canvas.models.inrf import INRF2D
-
+from neural_canvas.models.inr_maps_2d import INRConvMap
 
 class RunnerINRF2D:
     def __init__(self, 
@@ -219,3 +220,55 @@ class RunnerINRF2D:
                 utils.write_video(frames, self.output_dir, save_name=basename)
             frames = None
         return frames
+    
+    def fit(self,
+            target,
+            output_shape,
+            loss_weights,
+            num_epochs=50,
+            num_iters_per_epoch=100,
+            lr=1e-3,
+            weight_decay=1e-5,):
+        """fits model to target image
+        Args:
+            target: (torch.Tensor) target image
+            output_shape: (tuple[int]) new shape for the model
+            loss_weights: (dict) dictionary of loss weights
+            num_epochs: (int, optional) number of epochs to train for
+            n_iters_per_epoch: (int, optional) number of iterations per epoch
+            lr: (float, optional) learning rate
+            weight_decay: (float, optional) weight decay
+        """
+        assert self.model is not None, 'Must initialize model before fitting'
+        assert isinstance(self.model.map_fn, INRConvMap), 'Must initialize model with INRConvMap to fit'
+        optimizer = torch.optim.AdamW(self.model.map_fn.parameters(), 
+                                        lr=lr,
+                                        weight_decay=weight_decay,
+                                        betas=(.9, .999),
+                                        eps=1e-7) # support future half precision
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer, T_0=100, T_mult=2)
+        loss = losses.LossModule(**loss_weights)
+        epoch_iterator = tqdm.tqdm(range(num_epochs))
+        latents, inputs, _ = self.model.init_latent_inputs()
+        test_latents, test_inputs, _ = self.model.init_latent_inputs(output_shape=output_shape)
+        loss_vals = []
+        for epoch in epoch_iterator:
+            frame, test_frame, loss_val = self.model.fit(num_iters_per_epoch,
+                                                         target,
+                                                         loss,
+                                                         optimizer,
+                                                         scheduler,
+                                                         inputs=(latents, inputs),
+                                                         test_inputs=(test_latents, test_inputs),
+                                                         test_resolution=output_shape,)
+            epoch_iterator.set_description(f'Epoch: {epoch}, Loss: {loss_val:.4f}')
+            loss_vals.append(loss_val.item())
+            utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=frame, suffix='png')
+            utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=frame, suffix='tif')
+            utils.write_image(path=f'{self.output_dir}/fit_{epoch}_test', img=test_frame, suffix='png')
+            utils.write_image(path=f'{self.output_dir}/fit_{epoch}_test', img=test_frame, suffix='tif')
+        self.logger.info(f'Finished fitting model')
+        return loss_vals
+
+            

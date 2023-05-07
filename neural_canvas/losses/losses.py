@@ -3,9 +3,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from losses.lpips_loss import LPIPS
-from networks.discriminator_vqgan import NLayerDiscriminator
-from pytorch_msssim import ssim, ms_ssim, SSIM, MS_SSIM
+from neural_canvas.losses.lpips_loss import LPIPS
+from neural_canvas.models.discriminator_vqgan import NLayerDiscriminator
+from pytorch_msssim import ssim, ms_ssim
 
 
 def init_perceptual_loss(device):
@@ -74,12 +74,12 @@ class LossModule(nn.Module):
                  embedding_alpha=0.0,
                  device='cpu'):
         super(LossModule, self).__init__()
-        self.use_perceptual_loss = perceptual_loss > 0.0
-        self.use_discriminator_loss = discriminator_loss > 0.0
-        self.use_l1_loss = l1_loss > 0.0
-        self.use_l2_loss = l2_loss > 0.0
-        self.use_ssim_loss = ssim_loss > 0.0
-        self.use_embedding_loss = embedding_loss > 0.0
+        self.use_perceptual_loss = perceptual_alpha > 0.0
+        self.use_discriminator_loss = discriminator_alpha > 0.0
+        self.use_l1_loss = l1_alpha > 0.0
+        self.use_l2_loss = l2_alpha > 0.0
+        self.use_ssim_loss = ssim_alpha > 0.0
+        self.use_embedding_loss = embedding_alpha > 0.0
 
         self.perceptual_alpha = perceptual_alpha
         self.discriminator_alpha = discriminator_alpha
@@ -96,17 +96,17 @@ class LossModule(nn.Module):
     def forward(self, x, y):
         loss = 0.0
         if self.use_discriminator_loss:
-            loss += self.discriminator_alpha * self.discriminator_loss(
+            loss += self.discriminator_alpha * self.discriminator_loss_fn(
                 x, self.discriminator_loss_fn)
         if self.use_perceptual_loss:
-            loss += self.perceptual_alpha * self.perceptual_loss(
+            loss += self.perceptual_alpha * self.perceptual_loss_fn(
                 x, y, self.perceptual_loss_fn)
         if self.use_l1_loss:
-            loss += self.l1_alpha * self.l1_loss(x, y)
+            loss += self.l1_alpha * l1_loss(x, y)
         if self.use_l2_loss:
-            loss += self.l2_alpha * self.l2_loss(x, y)
+            loss += self.l2_alpha * l2_loss(x, y)
         if self.use_ssim_loss:
-            loss += self.ssim_alpha * self.ssim_loss(x, y)
+            loss += self.ssim_alpha * ssim_loss(x, y)
         if self.use_embedding_loss:
-            loss += self.embedding_alpha * self.embedding_loss(x)
+            loss += self.embedding_alpha * embedding_loss(x)
         return loss

@@ -21,6 +21,7 @@ pyyaml = "^6.0"
 matplotlib = "^3.7.1"
 llvmlite = "^0.39.1"
 umap-learn = "^0.5.3"
+pytorch-msssim = "^0.2.1"
 
 [tool.poetry.group.dev.dependencies]
 clip = "^0.2.0"
