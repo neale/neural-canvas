@@ -6,6 +6,10 @@
 # Neural Canvas: creative deep learning through implicit data representations
 
 
+<div align="center">
+<img src="https://raw.githubusercontent.com/neale/neural-canvas/main/neural_canvas/assets/montage.png" alt="logo"></img>
+</div>
+
 The noise vector is not that important, its just a "view" into the output space.
 
 The lack of variation between random vector outputs, when all else is fixed, I think has to do with the presence of squashing functions as activations. 
