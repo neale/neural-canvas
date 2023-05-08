@@ -28,9 +28,11 @@ def lerp(z1, z2, n):
 
 def load_image_as_tensor(path, output_dir, device='cpu'):
     target = cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
-    target = target / 255.
+    target = target / 127.5 - 1 #* 255.
     target = torch.from_numpy(target).permute(2, 0, 1).unsqueeze(0).float().to(device)
     target_fn = f'{output_dir}/target'
+    if not os.path.isdir(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
     write_image(path=target_fn,
         img=target.permute(0, 2, 3, 1)[0].cpu().numpy()*255, suffix='jpg')
     return target
@@ -117,7 +119,7 @@ def load_tif_metadata(path):
         'device': data['device'],
         'latent': torch.tensor(data['latent'])
     }
-    for int_key in ['mlp_layer_width', 'conv_feature_map_size', 'num_graph_nodes']:
+    for int_key in ['mlp_layer_width', 'conv_feature_map_size', 'input_encoding_dim', 'num_graph_nodes']:
         try:
             metadata[int_key] = int(data[int_key])
         except KeyError:

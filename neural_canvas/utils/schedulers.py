@@ -37,8 +37,3 @@ def log(start, end, steps):
 def sqrt(start, end, steps):
     """Sublinear schedule from start to end in steps"""
     return (end - start) * torch.sqrt(torch.linspace(0, 1, steps)) + start
-
-
-def cbrt(start, end, steps):
-    """Cubic root schedule from start to end in steps"""
-    return (end - start) * torch.cbrt(torch.linspace(0, 1, steps)) + start

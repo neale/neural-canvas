@@ -24,7 +24,7 @@ def load_args(argv=None):
     parser.add_argument('--num_samples', default=1, type=int, help='images to generate')
     parser.add_argument('--x_dim', default=256, type=int, help='out image width')
     parser.add_argument('--y_dim', default=256, type=int, help='out image height')
-    parser.add_argument('--c_dim', default=4, type=int, help='channels')
+    parser.add_argument('--c_dim', default=3, type=int, help='channels')
     parser.add_argument('--activations', default='fixed', type=str,
         help='activation set for generator')
     parser.add_argument('--final_activation', default='tanh', type=str, help='last activation',
@@ -32,13 +32,18 @@ def load_args(argv=None):
     parser.add_argument('--graph_topology', default='conv_fixed', type=str,
         help='graph style to use for generator', choices=['conv_fixed', 'WS'])
     parser.add_argument('--batch_size', default=1, type=int)
+    parser.add_argument('--mlp_layer_width', default=32, type=int, help='net width')    
+    parser.add_argument('--conv_feature_map_size', default=64, type=int, help='conv net width')
     parser.add_argument('--use_gpu', action='store_true', help='use gpu')
     parser.add_argument('--ws_graph_nodes', default=10, type=int, help='number of nodes in ws graph')
-    parser.add_argument('--weight_init', default='normal', type=str, help='weight init scheme')
+    parser.add_argument('--weight_init', default=None, type=str, help='weight init scheme')
     parser.add_argument('--weight_init_mean', default=0.0, type=float, help='weight init mean')
     parser.add_argument('--weight_init_std', default=1.0, type=float, help='weight init std')
     parser.add_argument('--weight_init_max', default=2.0, type=float, help='weight init max')
     parser.add_argument('--weight_init_min', default=-2.0, type=float, help='weight init min')
+    parser.add_argument('--num_freqs_encoding', default=5, type=int, help='number of (pi)2^i frequencies' \
+        'to use for positional encodings')
+    parser.add_argument('--fourier_encoding', action='store_true', help='use fourier input encodings')
 
     parser.add_argument('--discriminator_loss_weight', default=0.0, type=float, help='discriminator loss weight')
     parser.add_argument('--l1_loss_weight', default=1.0, type=float, help='l1 loss weight')
@@ -97,29 +102,35 @@ if __name__ == '__main__':
 
     for path in image_paths:
         target = utils.load_image_as_tensor(path, args.output_dir)
-        print ('target shape', target.shape)
 
         generator = INRF2D(latent_dim=args.latent_dim,
-                        latent_scale=args.latent_scale,
-                        output_shape=(target.shape[2], target.shape[3], target.shape[1]),
-                        output_dir=args.output_dir,
-                        tmp_dir=args.tmp_dir,
-                        seed=args.seed if not args.ignore_seed else None,
-                        device=device)
-        
-        generator.init_map_fn(activations=args.activations,
-                            final_activation=args.final_activation,
-                            weight_init=args.weight_init,
-                            num_graph_nodes=args.ws_graph_nodes,
-                            graph_topology=args.graph_topology,
-                            weight_init_mean=args.weight_init_mean,
-                            weight_init_std=args.weight_init_std,
-                            weight_init_min=args.weight_init_min,
-                            weight_init_max=args.weight_init_max,)
+                           latent_scale=args.latent_scale,
+                           output_shape=(target.shape[2], target.shape[3], target.shape[1]),
+                           output_dir=args.output_dir,
+                           tmp_dir=args.tmp_dir,
+                           seed=args.seed if not args.ignore_seed else None,
+                           device=device)
+
+        if args.fourier_encoding:
+            input_freqs_encoding = 2 * args.num_freqs_encoding
+        else:
+            input_freqs_encoding = 1
+        generator.init_map_fn(mlp_layer_width=args.mlp_layer_width,
+                              conv_feature_map_size=args.conv_feature_map_size,
+                              input_encoding_dim=input_freqs_encoding,
+                              activations=args.activations,
+                              final_activation=args.final_activation,
+                              weight_init=args.weight_init,
+                              num_graph_nodes=args.ws_graph_nodes,
+                              graph_topology=args.graph_topology,
+                              weight_init_mean=args.weight_init_mean,
+                              weight_init_std=args.weight_init_std,
+                              weight_init_min=args.weight_init_min,
+                              weight_init_max=args.weight_init_max,)
         
         runner = runner2d.RunnerINRF2D(model=generator,
-                                    output_dir=args.output_dir,
-                                    save_verbose=False)
+                                       output_dir=args.output_dir,
+                                       save_verbose=False)
         loss_vals = runner.fit(target,
                                output_shape=(args.x_dim, args.y_dim),
                                loss_weights = {
@@ -133,7 +144,10 @@ if __name__ == '__main__':
                                num_epochs=args.num_epochs,
                                num_iters_per_epoch=args.num_iters_per_epoch,
                                lr=args.lr,
-                               weight_decay=args.weight_decay)
+                               weight_decay=args.weight_decay,
+                               use_fourier_encoding=args.fourier_encoding,
+                               num_freqs=args.num_freqs_encoding,
+                               device=device,)
         
         img_name = path.split('/')[-1][:-4]
         plt.plot(np.arange(len(loss_vals)), loss_vals, label='INRF_loss')

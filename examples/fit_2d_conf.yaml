@@ -1,24 +1,27 @@
 # Example config for generating and upscaling images with an INRF2D
 
-noise_dim: 16
-noise_scale: 32
+latent_dim: 8
+latent_scale: 1.0 # matters a lot for positional encodings (1.0)
 num_samples: 1
-x_dim: 1024
-y_dim: 1024
+x_dim: 768
+y_dim: 768
 c_dim: 3
-conv_feature_map_size: 64
+mlp_layer_width: 32
+conv_feature_map_size: 32
 activations: GELU # basic random nn.GELU
-final_activation: !!null # sigmoid tanh
+final_activation: tanh # sigmoid tanh
 graph_topology: conv_fixed # conv_fixed, WS
+fourier_encoding: True
+num_freqs_encoding: 4
 batch_size: 1
-# use_gpu: True
+use_gpu: True
 ws_graph_nodes: 64
-weight_init: dip # normal uniform, dip, siren
+weight_init: dip #normal # normal uniform, dip, siren
 input_file: neural_canvas/assets/logo.jpg
-output_dir: outputs/fit_2d_example
+output_dir: outputs/fit_2d_example_fourier3_conv
 tmp_dir: tmp/
 
-seed: 62
+seed: 63
 
 discriminator_loss_weight: 0.0
 l1_loss_weight: 1.0
@@ -27,8 +30,8 @@ ssim_loss_weight: 0.0
 perceptual_loss_weight: 0.0
 embedding_loss_weight: 0.0
 
-lr: 0.001
-weight_decay: 0.00005
+lr: 0.005
+weight_decay: 0.00001
 
-num_epochs: 20
-num_iters_per_epoch: 50
+num_epochs: 100
+num_iters_per_epoch: 100

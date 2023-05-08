@@ -70,13 +70,15 @@ def mixture_2D(x_dim, y_dim, device):
 
 class FourierEncoding(nn.Module):
     # instatiate for all components of the input parameterizations
-    # E.g. for a 2D parameterization, instantiate 2 FourierEncoding modules for x and y
-    def __init__(self, num_layers):
+    def __init__(self, num_freqs):
         super().__init__()
-        frequencies = [2 ** i for i in range(num_layers)]
-        self.register_buffer('freqs', torch.Tensor(frequencies)[None, :, None])
+        frequencies = [2 ** i * np.pi for i in range(num_freqs)]
+        self.register_buffer('freqs', torch.Tensor(frequencies)[None, :, None, None])
 
     def forward(self, x):
-        x = x * self.freqs
-        x = torch.cat([x.sin(), x.cos()], dim=-1)
-        return x
+        freq_outs = []
+        for i in range(x.shape[1]):
+            f = self.freqs * x[:, i]
+            freq_outs.append(torch.cat([f.sin(), f.cos()], dim=1))
+        encoded_input = torch.cat(freq_outs, dim=1)
+        return encoded_input

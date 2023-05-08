@@ -8,6 +8,7 @@ import torch
 import logging
 
 from neural_canvas.utils import utils
+from neural_canvas.utils.positional_encodings import FourierEncoding
 from neural_canvas.losses import losses
 from neural_canvas.models.inrf import INRF2D
 from neural_canvas.models.inr_maps_2d import INRConvMap
@@ -144,6 +145,8 @@ class RunnerINRF2D:
                        latent_scale=metadata['latent_scale'],
                        seed=metadata['seed'])
         model.init_map_fn(mlp_layer_width=metadata['mlp_layer_width'],
+                          conv_feature_map_size=metadata['conv_feature_map_size'],
+                          input_encoding_dim=metadata['input_encoding_dim'],
                           activations=metadata['activations'],
                           final_activation=metadata['final_activation'],
                           weight_init=metadata['weight_init'],
@@ -228,7 +231,10 @@ class RunnerINRF2D:
             num_epochs=50,
             num_iters_per_epoch=100,
             lr=1e-3,
-            weight_decay=1e-5,):
+            weight_decay=1e-5,
+            use_fourier_encoding=False,
+            num_freqs=5,
+            device='cpu'):
         """fits model to target image
         Args:
             target: (torch.Tensor) target image
@@ -240,18 +246,24 @@ class RunnerINRF2D:
             weight_decay: (float, optional) weight decay
         """
         assert self.model is not None, 'Must initialize model before fitting'
-        assert isinstance(self.model.map_fn, INRConvMap), 'Must initialize model with INRConvMap to fit'
         optimizer = torch.optim.AdamW(self.model.map_fn.parameters(), 
-                                        lr=lr,
-                                        weight_decay=weight_decay,
-                                        betas=(.9, .999),
-                                        eps=1e-7) # support future half precision
+                                      lr=lr,
+                                      weight_decay=weight_decay,
+                                      betas=(.9, .999),
+                                      eps=1e-7) # support future half precision
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer, T_0=100, T_mult=2)
+            optimizer, T_0=200, T_mult=2)
         loss = losses.LossModule(**loss_weights)
         epoch_iterator = tqdm.tqdm(range(num_epochs))
-        latents, inputs, _ = self.model.init_latent_inputs()
-        test_latents, test_inputs, _ = self.model.init_latent_inputs(output_shape=output_shape)
+        latents, inputs, mlatents = self.model.init_latent_inputs()
+        test_latents, test_inputs, _ = self.model.init_latent_inputs(
+            latents=mlatents if 'conv' not in self.model.graph_topology else None,
+            output_shape=output_shape)
+        if use_fourier_encoding:
+            input_encoding = FourierEncoding(num_freqs).to(device)
+            inputs = input_encoding(inputs)
+            test_inputs = input_encoding(test_inputs)
+
         loss_vals = []
         for epoch in epoch_iterator:
             frame, test_frame, loss_val = self.model.fit(num_iters_per_epoch,
@@ -264,6 +276,23 @@ class RunnerINRF2D:
                                                          test_resolution=output_shape,)
             epoch_iterator.set_description(f'Epoch: {epoch}, Loss: {loss_val:.4f}')
             loss_vals.append(loss_val.item())
+
+            if frame.ndim == 4 and frame.shape[0] == 1:
+                frame = frame[0]
+            if test_frame.ndim == 4 and test_frame.shape[0] == 1:
+                test_frame = test_frame[0]
+            frame = frame.permute(1, 2, 0)
+            test_frame = test_frame.permute(1, 2, 0)
+            frame = frame.detach().cpu().numpy()
+            test_frame = test_frame.detach().cpu().numpy()
+            if self.model.map_fn.final_activation == 'tanh':
+                frame = ((frame + 1.) * 127.5).astype(np.uint8)
+                test_frame = ((test_frame + 1.) * 127.5).astype(np.uint8)
+            else:
+                frame = (frame * 255).astype(np.uint8)
+                test_frame = (test_frame * 255).astype(np.uint8)
+
+
             utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=frame, suffix='png')
             utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=frame, suffix='tif')
             utils.write_image(path=f'{self.output_dir}/fit_{epoch}_test', img=test_frame, suffix='png')

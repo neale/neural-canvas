@@ -119,6 +119,7 @@ class INRF2D(INRFBase):
     def init_map_fn(self,
                     mlp_layer_width=32,
                     conv_feature_map_size=64,
+                    input_encoding_dim=1,
                     activations='fixed',
                     final_activation='sigmoid',
                     weight_init='normal',
@@ -132,31 +133,44 @@ class INRF2D(INRFBase):
         """
         initializes the forward map function of the implicit neural representation
         Args: 
-            activation_set (str): 'fixed', 'random', or instance of torch.nn: denotes the type
+            mlp_layer_width (int): width of the layers in the MLP
+            conv_feature_map_size (int): number of feature maps in the convolutional layers
+            input_encoding_dim (int): dimension of the input encoding
+            activations (str): 'fixed', 'random', or instance of torch.nn: denotes the type
                 of activation functions used in the forward map
-            graph_topology (str): 'mlp_fixed', 'conv_fixed', or 'WS': denotes the type of graph topology
-                used in the forward map
-            graph (networkx graph): if graph_topology is 'WS', then this is the graph used in the forward map
-                used to reproduce the results of a previous or known graph
+            final_activation (str): 'sigmoid', 'tanh', 'relu', or instance of torch.nn: denotes
+                the type of activation function used in the final layer of the forward map
+            weight_init (str): 'normal', 'uniform', or instance of torch.nn.init: denotes the
+                type of weight initialization used in the forward map
+            graph_topology (str): 'fixed', 'random', or instance of torch.nn: denotes the type
+                of graph topology used in the forward map
+            num_graph_nodes (int): number of nodes in the graph
+            weight_init_mean (float): mean of the weight initialization
+            weight_init_std (float): standard deviation of the weight initialization
+            weight_init_min (float): minimum value of the weight initialization
+            weight_init_max (float): maximum value of the weight initialization
+            graph (torch.Tensor): networkx string representation of the graph
         """
         if graph_topology == 'mlp_fixed':
             map_fn = INRLinearMap(
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
+                input_encoding_dim=input_encoding_dim,
                 activations=activations, final_activation=final_activation)
 
         elif graph_topology == 'conv_fixed':
             map_fn = INRConvMap(
                 self.latent_dim, self.c_dim, feature_dim=conv_feature_map_size,
+                input_encoding_dim=input_encoding_dim,
                 activations=activations, final_activation=final_activation)
             
         elif graph_topology == 'WS':
             map_fn = INRRandomGraph(
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
+                input_encoding_dim=input_encoding_dim,
                 num_graph_nodes=num_graph_nodes, graph=graph,
                 activations=activations, final_activation=final_activation)
         else:
             raise NotImplementedError(f'graph topology {graph_topology} not implemented')
-
         # initialize weights
         if weight_init == 'normal':
             map_fn = init_weights_normal(map_fn, weight_init_mean, weight_init_std)
@@ -167,9 +181,10 @@ class INRF2D(INRFBase):
         elif weight_init == 'siren':
             map_fn = init_weights_siren(map_fn)
         else:
-            raise NotImplementedError(f'weight init {weight_init} not implemented')
+            self.logger.info(f'weight init {weight_init} not implemented')
         self.mlp_layer_width = mlp_layer_width
         self.conv_feature_map_size = conv_feature_map_size
+        self.input_encoding_dim = input_encoding_dim
         self.activations = activations
         self.final_activation = final_activation
         self.weight_init = weight_init
@@ -223,7 +238,11 @@ class INRF2D(INRFBase):
             else:
                 latents = torch.ones(batch_size, 1, self.latent_dim).uniform_(-2.0, 2.0)
         else:
-            assert latents.shape == (batch_size, 1, self.latent_dim)
+            if self.graph_topology == 'conv_fixed':
+                assert latents.shape == (batch_size, self.latent_dim, 1, self.y_dim), '' \
+                    f'got latent shape {latents.shape}'
+            else:
+                assert latents.shape == (batch_size, 1, self.latent_dim), f'got latent shape {latents.shape}'
         latents_to_save = latents.clone().detach().cpu()
 
         latents = latents.to(self.device)
@@ -308,39 +327,32 @@ class INRF2D(INRFBase):
             test_resolution=(512, 512, 3)):
         """optimizes parameters of 2D INRF to fit a target image
 
-        Args:
-            target (torch tensor): target image to fit
-            loss (callable): loss function
-            optimizer (torch optimizer): optimizer
+        Args:                            if self.map_fn.act_out == 'tanh':
+izer): optimizer
             scheduler (torch scheduler, optional): scheduler
         """
-        assert 'conv' in self.graph_topology, 'fitting only supported for conv models'
         if inputs is None:
-            latents, inputs, _ = self.init_latent_inputs()
+            latents, inputs, mlatents = self.init_latent_inputs()
         else:
             latents, inputs = inputs
         if test_inputs is None:
             test_latents, test_inputs, _ = self.init_latent_inputs(
-                output_shape=test_resolution)
+                mlatents, output_shape=test_resolution)
         else:
             test_latents, test_inputs = test_inputs
         target = target.to(self.device)
         for _ in range(n_iters):
             optimizer.zero_grad()
             frame = self.map_fn(inputs, latents)
+            frame = frame.reshape(target.shape)
             loss_val = loss(frame, target)
             loss_val.backward()
             optimizer.step()
             if scheduler is not None:
                 scheduler.step()
-        if self.map_fn.act_out == 'tanh':
-            frame = (frame + 1) / 2.
-        frame = frame[0].permute(1, 2, 0).detach().cpu().numpy() * 255.
 
-        test_frame = self.map_fn(test_inputs, test_latents)[0]
-        if self.map_fn.act_out == 'tanh':
-            test_frame = (test_frame + 1) / 2.
-        test_frame = test_frame.permute(1, 2, 0).detach().cpu().numpy() * 255.
+        test_frame = self.map_fn(test_inputs, test_latents)
+        test_frame = test_frame.reshape(*target.shape[:2], *test_resolution)
         return frame, test_frame, loss_val
 
 

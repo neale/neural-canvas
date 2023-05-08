@@ -11,6 +11,7 @@ class INRRandomGraph(nn.Module):
                  latent_dim,
                  c_dim,
                  layer_width,
+                 input_encoding_dim,
                  num_graph_nodes,
                  graph=None,
                  activations='basic',
@@ -20,6 +21,8 @@ class INRRandomGraph(nn.Module):
         self.latent_dim = latent_dim
         self.c_dim = c_dim
         self.layer_width = layer_width
+        self.input_encoding_dim = input_encoding_dim
+
         self.input_nodes = 1
         self.name = name
         self.nodes = num_graph_nodes
@@ -28,9 +31,9 @@ class INRRandomGraph(nn.Module):
 
         self.name = name
         self.linear_latents = nn.Linear(self.latent_dim, self.layer_width)
-        self.linear_x = nn.Linear(1, self.layer_width, bias=False)
-        self.linear_y = nn.Linear(1, self.layer_width, bias=False)
-        self.linear_r = nn.Linear(1, self.layer_width, bias=False)
+        self.linear_x = nn.Linear(self.input_encoding_dim, self.layer_width, bias=False)
+        self.linear_y = nn.Linear(self.input_encoding_dim, self.layer_width, bias=False)
+        self.linear_r = nn.Linear(self.input_encoding_dim, self.layer_width, bias=False)
         self.linear1 = nn.Linear(self.layer_width, self.layer_width)
         self.linear2 = nn.Linear(self.layer_width, self.layer_width)
         self.scale = ScaleAct()
@@ -105,6 +108,7 @@ class INRLinearMap(nn.Module):
                  latent_dim,
                  c_dim,
                  layer_width,
+                 input_encoding_dim,
                  activations='basic',
                  final_activation='sigmoid',
                  name='INRLinearMap'):
@@ -112,15 +116,16 @@ class INRLinearMap(nn.Module):
         self.latent_dim = latent_dim
         self.c_dim = c_dim
         self.layer_width = layer_width
+        self.input_encoding_dim = input_encoding_dim
         self.activations = activations
         self.final_activation = final_activation
 
         self.name = name
 
         self.linear_latents = nn.Linear(self.latent_dim, self.layer_width)
-        self.linear_x = nn.Linear(1, self.layer_width, bias=False)
-        self.linear_y = nn.Linear(1, self.layer_width, bias=False)
-        self.linear_r = nn.Linear(1, self.layer_width, bias=False)
+        self.linear_x = nn.Linear(self.input_encoding_dim, self.layer_width, bias=False)
+        self.linear_y = nn.Linear(self.input_encoding_dim, self.layer_width, bias=False)
+        self.linear_r = nn.Linear(self.input_encoding_dim, self.layer_width, bias=False)
 
         self.linear1 = nn.Linear(self.layer_width, self.layer_width)
         self.linear2 = nn.Linear(self.layer_width, self.layer_width)
@@ -172,7 +177,10 @@ class INRLinearMap(nn.Module):
         return g
  
     def forward(self, inputs, latents):
-        x, y, r = inputs[:, 0, ...], inputs[:, 1, ...], inputs[:, 2, ...]
+        chunk_size = inputs.shape[1]//3
+        x = inputs[:, :chunk_size, :, 0].permute(0, 2, 1)
+        y = inputs[:, chunk_size:2*chunk_size, :, 0].permute(0, 2, 1)
+        r = inputs[:, chunk_size*2:, :, 0].permute(0, 2, 1)
         latents_pt = self.linear_latents(latents)
         x_pt = self.linear_x(x)
         y_pt = self.linear_y(y)
@@ -192,6 +200,7 @@ class INRConvMap(nn.Module):
                  latent_dim,
                  c_dim,
                  feature_dim,
+                 input_encoding_dim,
                  activations='basic',
                  final_activation='sigmoid',
                  name='INRConvMap'):
@@ -199,9 +208,10 @@ class INRConvMap(nn.Module):
         self.latent_dim = latent_dim
         self.c_dim = c_dim
         self.feature_dim = feature_dim
+        self.input_encoding_dim = input_encoding_dim
         self.activations = activations
         self.final_activation = final_activation
-        self.input_channels = latent_dim + c_dim
+        self.input_channels = 3*input_encoding_dim + latent_dim
         self.name = name
 
         self.conv1 = nn.Conv2d(self.input_channels, self.feature_dim, kernel_size=1, stride=1, padding='same')
