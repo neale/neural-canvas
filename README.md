@@ -5,40 +5,64 @@
 
 # Neural Canvas: creative deep learning through implicit data representations
 
-
 <div align="center">
 <img src="https://raw.githubusercontent.com/neale/neural-canvas/main/neural_canvas/assets/montage.png" alt="logo"></img>
 </div>
 
-The noise vector is not that important, its just a "view" into the output space.
+# Supported Models / Functions
 
-The lack of variation between random vector outputs, when all else is fixed, I think has to do with the presence of squashing functions as activations. 
 
-* Tanh
-* Sigmoid
-* Gaussian
+# Usage
 
-5 or so random input vectors should be enough to get a glimpse of the space, and then try more if you like the style.
+## Image generation with 2D INRFs
 
-Importantly **There is not always something interesting in every configuration**
+<div align="center">
+<img src="https://raw.githubusercontent.com/neale/neural-canvas/main/neural_canvas/assets/img_2d_gen.png" alt="gen_img"></img>
+</div>
 
-We can test this by generating randomly until we get a batch of outputs that are obviously interesting, and another batch that are more boring
+## Fitting implicit functions to 2D data
 
-Then perform a zoom test on both sets, yielding 10 videos in total. 
+We can utilize any of the INRF architectures toward fitting a 2D image. 
 
-### Zoom Tests (Good)
-![here](assets/zoomg1.mp4)
-![here](assets/zoomg5.mp4)
+**Why would we want to do this?** 
 
-### Zoom Tests (boring)
-![here](assets/zoomb1.mp4)
-![here](assets/zoomb5.mp4)
+Implicit data representations are cheap! There are less parameters in the neural networks used to represent the 2D and 3D data, than there are pixels or voxels in the data itself. 
 
-Its immediately clear with zooming that we're looking at the same scene, even though our inputs are randomly generated
+Furthermore, the neural representation is flexible, and can be used to extend the data in a number of ways. 
 
-For the boring test, we just have a network that not too interesting, and different views into its output space don't reveal any real structure. 
+For example, we can instantiate the following function to fit an image
 
-## Usage
+```python3
+from neural_canvas.functions import fit_image
+from imagio import imread
+
+img = imread('neural_canvas/assets/logo.png')
+neural_data = fit_image(img)  # returns a implicit neural representation of the image
+
+print (neural_data.size())  # return size of neural representation
+# >> 8547
+print (img.size)
+# >> 196608
+
+# get original data
+img_original = neural_data.data()
+print (img_original.shape)
+# >> (256, 256, 3)
+
+img_super_res = neural_data.resize(1024) 
+print (img_super_res.shape)
+# >> (1024, 1024, 3)
+```
+
+### Positional Encodings
+
+Sineusoidal encodings are not supported for `Conv` and `Linear` architectures!
+
+* [Positional encodings work quite well for NERFs](https://arxiv.org/abs/2003.08934), so surely they would help here too.  
+* `utils.positional_encodings.FourierEncoding` defines an alternating `Sin`, `Cos` encoding for a fixed number of frequencies. In practice this works quite a bit better for `INRFConvMap` architectures than any linear network, possibly due to the input channel concatenation. 
+* See `examples/fit_2d_conf.yaml` for an example of fitting a target image utilizing these positional encodings.   
+
+## 2D generators
 
 Neural canvas provides a set of easy-to-use APIs for generating artwork with implicit neural representations. Here's an example of how to generate an image with a 2D Implicit Neural Representation Function:
 
@@ -58,6 +82,31 @@ model = indf_runner(model, logdir='outputs/hello_canvas')
 # Generate and save 10 images
 model.generate(num=10)
 ```
+
+
+## 3D generators
+
+Neural canvas provides a set of easy-to-use APIs for generating artwork with implicit neural representations. Here's an example of how to generate an image with a 2D Implicit Neural Representation Function:
+
+```python
+from neural_canvas.models.indf import INDF2D
+from neural_canvas.runners import indf_runner
+from neural_canvas import imwrite
+
+# Define the size of the image
+width = 512
+height = 512
+
+# Create a 2D implicit neural representation model
+model = INDF2D(width, height)
+# Wrap model in a runner to allow generation and saving utilities
+model = indf_runner(model, logdir='outputs/hello_canvas')
+# Generate and save 10 images
+model.generate(num=10)
+```
+
+### Render 3D volumetric data with PyVista and Fiji
+
 
 ## Contributions
 
