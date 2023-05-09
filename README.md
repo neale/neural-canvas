@@ -1,7 +1,3 @@
-<div align="center">
-<img src="https://raw.githubusercontent.com/neale/neural-canvas/main/neural_canvas/assets/logo.jpg" alt="logo"></img>
-</div>
-
 
 # Neural Canvas: creative deep learning through implicit data representations
 
