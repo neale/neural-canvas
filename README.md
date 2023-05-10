@@ -41,8 +41,35 @@ Importantly, the instantiated INRF is a neural representation of the output imag
 size = (1024, 1024)
 model.generate(output_shape=size)
 ```
+Re-rendering at a higher resolution actually _adds_ detail, in contrast to traditional interpolation, we can use this fact to zoom in on our image. 
+```python
+size=(1024, 1024)
+zoom_xy = (10, 10) # xy zoom range is (0, inf)z
+model.generate(size=size, zoom=zoom_xy)
+```
+From this its clear that a random INRF is just an embedding of the INRF function into the input coordinate frame. We can change that function by using any of the 3 supported architectures
 
-## Fitting implicit functions to 2D data
+* MLP with random or specified nonlinearities
+* 1x1 Convolutional stack with random or specified nonlinearities, and optional norms
+* Random Watts-Strogatz graph with random activations 
+
+Choose a different architecture quickly, or with more control
+```python
+model = INRF2D(graph_topology='ws') # init Watts-Strogatz graph
+# is equivalent to 
+model.init_map_fn(mlp_layer_width=32,
+                  activations='random,
+                  final_activation=None,
+                  weight_init='normal',
+                  num_graph_nodes=20,
+                  graph_topology='ws',
+                  weight_init_mean=0,
+                  weight_init_std=3,)
+```
+
+We can also fit data if we want 
+
+## Fitting INRFs to 2D data
 
 We can utilize any of the INRF architectures toward fitting a 2D image. 
 
@@ -59,7 +86,8 @@ from neural_canvas.functions import fit_image
 from imagio import imread
 
 img = imread('neural_canvas/assets/logo.png')
-neural_data = fit_image(img)  # returns a implicit neural representation of the image
+model = INRF2D()
+neural_data = model.fit(img)  # returns a implicit neural representation of the image
 
 print (neural_data.size())  # return size of neural representation
 # >> 8547
