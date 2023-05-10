@@ -5,16 +5,42 @@
 <img src="https://raw.githubusercontent.com/neale/neural-canvas/main/neural_canvas/assets/montage.png" alt="logo"></img>
 </div>
 
-# Supported Models / Functions
+# Overview
 
+Neural canvas is a Python library that provides tools for working with implicit neural representations of data. This library is designed to make it easy for artists and researchers to experiment with various types of implicit neural representations and create stunning images and videos.
 
-# Usage
+Implicit neural representations, also called [neural fields](https://neuralfields.cs.brown.edu/) are a powerful class of models that can learn to represent complex patterns in data. 
+They work by learning to map a set of inputs to a continuous function that defines the implicit shape of the data. 
+This resembles an optimization problem rather than machine learning, where machine learning techniques usually seek to find some configuration that generalizes to lots of data on some task. 
+Examples of implicit neural representations include NERFs ([Neural Radiance Fields](https://arxiv.org/abs/2003.08934v2)) for 3D data, or CPPNs ([Compositional Pattern-Producing Networks](https://blog.otoro.net/2016/03/25/generating-abstract-patterns-with-tensorflow/)) for 2D data. 
+
+Implicit neural representation functions (INRFs) have a variety of uses, from data compression, to artistic generation. In pratice, INRF's a usually take some structural information, like (x, y) coordinates, and are optimized to fit a single example e.g. NERFs just learn to represent a single scene. Alternatively, random generation is interesting artistically, as 2D and 3D INRFs can be used to produce some really interesting looking artwork. 
+
+Lets start with the most basic example
 
 ## Image generation with 2D INRFs
+
+We can instantiate a 2D INRF with random parameters, by default the architecture is a 4 layer MLP. the INRF will transform _(x, y)_ coordinates and a radius input _r_ into an output image of arbitrary size. Because we use nonstandard activation functions in the MLP, the output image will contain different kinds of patterns, some examples are shown below.
 
 <div align="center">
 <img src="https://raw.githubusercontent.com/neale/neural-canvas/main/neural_canvas/assets/img_2d_gen.png" alt="gen_img"></img>
 </div>
+
+```python
+from neural_canvas.models.indf import INRF2D
+
+# Create a 2D implicit neural representation model
+model = INRF2D()
+# Generate the image given by the random INRF
+size = (256, 256)
+model.generate(output_size=size)
+```
+Importantly, the instantiated INRF is a neural representation of the output image, meaning that we can do things like modify the image size just by passing in a larger coordinate set
+
+```python
+size = (1024, 1024)
+model.generate(output_shape=size)
+```
 
 ## Fitting implicit functions to 2D data
 
@@ -62,22 +88,6 @@ Sineusoidal encodings are not supported for `Conv` and `Linear` architectures!
 
 Neural canvas provides a set of easy-to-use APIs for generating artwork with implicit neural representations. Here's an example of how to generate an image with a 2D Implicit Neural Representation Function:
 
-```python
-from neural_canvas.models.indf import INDF2D
-from neural_canvas.runners import indf_runner
-from neural_canvas import imwrite
-
-# Define the size of the image
-width = 512
-height = 512
-
-# Create a 2D implicit neural representation model
-model = INDF2D(width, height)
-# Wrap model in a runner to allow generation and saving utilities
-model = indf_runner(model, logdir='outputs/hello_canvas')
-# Generate and save 10 images
-model.generate(num=10)
-```
 
 
 ## 3D generators
