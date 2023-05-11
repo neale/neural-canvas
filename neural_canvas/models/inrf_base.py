@@ -63,6 +63,6 @@ class INRFBase(ABC):
         pass
 
     def __repr__(self):
-        return f"INRFBase(noise_dim={self.noise_dim}, noise_scale={self.noise_scale}, " \
+        return f"INRF(latent_dim={self.latent_dim}, latent_scale={self.latent_scale}, " \
                f"output_shape=({self.x_dim}, {self.y_dim}, {self.c_dim}), output_dir='{self.output_dir}', " \
                f"tmp_dir='{self.tmp_dir}', seed_gen={self.seed_gen}, seed={self.seed}, device='{self.device}')"

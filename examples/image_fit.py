@@ -127,6 +127,10 @@ if __name__ == '__main__':
                               weight_init_std=args.weight_init_std,
                               weight_init_min=args.weight_init_min,
                               weight_init_max=args.weight_init_max,)
+        # print number of parameters in map_fn
+        num_params = sum(p.numel() for p in generator.map_fn.parameters() if p.requires_grad)
+        print (f'Number of parameters in map_fn: {num_params}')
+
         
         runner = runner2d.RunnerINRF2D(model=generator,
                                        output_dir=args.output_dir,

@@ -14,7 +14,7 @@ class INRRandomGraph(nn.Module):
                  input_encoding_dim,
                  num_graph_nodes,
                  graph=None,
-                 activations='basic',
+                 activations='fixed',
                  final_activation='sigmoid',
                  name='INRRandomGraph'):
         super(INRRandomGraph, self).__init__()
@@ -39,14 +39,14 @@ class INRRandomGraph(nn.Module):
         self.scale = ScaleAct()
         if self.activations == 'random':
             acts = [randact(activation_set='large') for _ in range(6)]
-        elif self.activations == 'basic':
+        elif self.activations == 'fixed':
             acts = [nn.Tanh(), nn.ELU(), nn.Softplus(), nn.Tanh(), 
                     Gaussian(), SinLayer()]
         elif hasattr(torch.nn, activations):
             acts = [getattr(torch.nn, activations)() for _ in range(6)]
         else:
-            raise ValueError('activations must be basic, random, '\
-                             'or else a valid torch.nn activation')
+            raise ValueError('activations must be `fixed`, `random`, '\
+                             f'or else a valid torch.nn activation, got {activations}')
         self.acts_start = nn.ModuleList(acts)
         # init graph parameters
         k = 4
@@ -90,8 +90,8 @@ class INRRandomGraph(nn.Module):
     def load_graph_str(self, s):
         return networkx.parse_graphml(s, node_type=int)
 
-    def forward(self, inputs, latents):
-        x, y, r = inputs[:, 0, ...], inputs[:, 1, ...], inputs[:, 2, ...]
+    def forward(self, fields, latents):
+        x, y, r = fields[:, 0, ...], fields[:, 1, ...], fields[:, 2, ...]
         latents_ = self.acts_start[0](self.linear_latents(latents))
         r_ = self.acts_start[1](self.linear_r(r))
         y_ = self.acts_start[2](self.linear_y(y))
@@ -109,7 +109,7 @@ class INRLinearMap(nn.Module):
                  c_dim,
                  layer_width,
                  input_encoding_dim,
-                 activations='basic',
+                 activations='fixed',
                  final_activation='sigmoid',
                  name='INRLinearMap'):
         super(INRLinearMap, self).__init__()
@@ -134,13 +134,13 @@ class INRLinearMap(nn.Module):
 
         if self.activations == 'random':
             acts = [randact(activation_set='large') for _ in range(5)]
-        elif self.activations == 'basic':
+        elif self.activations == 'fixed':
             acts = [nn.GELU(), nn.Softplus(), nn.Tanh(), SinLayer(), ScaleAct()]
         elif hasattr(torch.nn, activations):
             acts = [getattr(torch.nn, activations)() for _ in range(5)]
         else:
-            raise ValueError('activations must be `basic`, `random`, '\
-                             'or else a valid torch.nn activation')
+            raise ValueError('activations must be `fixed`, `random`, '\
+                             f'or else a valid torch.nn activation, got {activations}')
         self.acts = nn.ModuleList(acts)
 
         if final_activation == 'tanh':
@@ -176,11 +176,16 @@ class INRLinearMap(nn.Module):
 
         return g
  
-    def forward(self, inputs, latents):
-        chunk_size = inputs.shape[1]//3
-        x = inputs[:, :chunk_size, :, 0].permute(0, 2, 1)
-        y = inputs[:, chunk_size:2*chunk_size, :, 0].permute(0, 2, 1)
-        r = inputs[:, chunk_size*2:, :, 0].permute(0, 2, 1)
+    def forward(self, fields, latents):
+        #TODO refactor this to look better, its clunky to support positional encodings
+        # field inputs should probably be a dict, since they have physical relevance
+        if fields.ndim == 4: # after positional encoding
+            chunk_size = fields.shape[1]//3
+            x = fields[:, :chunk_size, :, 0].permute(0, 2, 1)
+            y = fields[:, chunk_size:2*chunk_size, :, 0].permute(0, 2, 1)
+            r = fields[:, chunk_size*2:, :, 0].permute(0, 2, 1)
+        else:
+            x, y, r = fields[:, 0, ...], fields[:, 1, ...], fields[:, 2, ...]
         latents_pt = self.linear_latents(latents)
         x_pt = self.linear_x(x)
         y_pt = self.linear_y(y)
@@ -201,7 +206,7 @@ class INRConvMap(nn.Module):
                  c_dim,
                  feature_dim,
                  input_encoding_dim,
-                 activations='basic',
+                 activations='fixed',
                  final_activation='sigmoid',
                  name='INRConvMap'):
         super(INRConvMap, self).__init__()
@@ -226,14 +231,14 @@ class INRConvMap(nn.Module):
 
         if self.activations == 'random':
             acts = [randact(activation_set='large') for _ in range(9)]
-        elif self.activations == 'basic':
+        elif self.activations == 'fixed':
             acts = [nn.Tanh(), nn.ELU(), nn.Softplus(), nn.Tanh(), SinLayer(),
                     nn.Tanh(), nn.ELU(), nn.Softplus(), CosLayer()]
         elif hasattr(torch.nn, activations):
             acts = [getattr(torch.nn, activations)() for _ in range(9)]
         else:
-            raise ValueError('activations must be `basic`, `random`, '\
-                             'or else a valid torch.nn activation')
+            raise ValueError('activations must be `fixed`, `random`, '\
+                             f'or else a valid torch.nn activation, got {activations}')
         self.acts = nn.ModuleList(acts)
 
         self.norms = nn.ModuleList([nn.Identity() for _ in range(8)])
@@ -249,8 +254,8 @@ class INRConvMap(nn.Module):
         acts = [randact(activation_set='large') for _ in range(9)]
         self.acts = nn.ModuleList(acts)    
     
-    def forward(self, inputs, latents):
-        x = torch.cat([inputs, latents], 1)
+    def forward(self, fields, latents):
+        x = torch.cat([fields, latents], 1)
         x = self.acts[0](self.norms[0](self.conv1(x)))
         x = self.acts[1](self.norms[1](self.conv2(x)))
         x = self.acts[2](self.norms[2](self.conv3(x)))

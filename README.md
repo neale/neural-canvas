@@ -27,13 +27,13 @@ We can instantiate a 2D INRF with random parameters, by default the architecture
 </div>
 
 ```python
-from neural_canvas.models.indf import INRF2D
+from neural_canvas.models.inrf import INRF2D
 
 # Create a 2D implicit neural representation model
 model = INRF2D()
 # Generate the image given by the random INRF
 size = (256, 256)
-model.generate(output_size=size)
+model.generate(output_shape=size)
 ```
 Importantly, the instantiated INRF is a neural representation of the output image, meaning that we can do things like modify the image size just by passing in a larger coordinate set
 
@@ -47,6 +47,8 @@ size=(1024, 1024)
 zoom_xy = (10, 10) # xy zoom range is (0, inf)z
 model.generate(size=size, zoom=zoom_xy)
 ```
+One caveat is that this simple `.generate(shape)` interface is simplistic, so we can't use this pattern to get fine-grained control over what is generated. To get fine grained control see `examples/generate_image.py`. 
+
 From this its clear that a random INRF is just an embedding of the INRF function into the input coordinate frame. We can change that function by using any of the 3 supported architectures
 
 * MLP with random or specified nonlinearities
@@ -65,6 +67,8 @@ model.init_map_fn(mlp_layer_width=32,
                   graph_topology='ws',
                   weight_init_mean=0,
                   weight_init_std=3,)
+
+model.init_map_weights()  # resample weights to get different outputs
 ```
 
 We can also fit data if we want 
@@ -106,8 +110,6 @@ print (img_super_res.shape)
 
 ### Positional Encodings
 
-Sineusoidal encodings are not supported for `Conv` and `Linear` architectures!
-
 * [Positional encodings work quite well for NERFs](https://arxiv.org/abs/2003.08934), so surely they would help here too.  
 * `utils.positional_encodings.FourierEncoding` defines an alternating `Sin`, `Cos` encoding for a fixed number of frequencies. In practice this works quite a bit better for `INRFConvMap` architectures than any linear network, possibly due to the input channel concatenation. 
 * See `examples/fit_2d_conf.yaml` for an example of fitting a target image utilizing these positional encodings.   
@@ -123,8 +125,8 @@ Neural canvas provides a set of easy-to-use APIs for generating artwork with imp
 Neural canvas provides a set of easy-to-use APIs for generating artwork with implicit neural representations. Here's an example of how to generate an image with a 2D Implicit Neural Representation Function:
 
 ```python
-from neural_canvas.models.indf import INDF2D
-from neural_canvas.runners import indf_runner
+from neural_canvas.models.inrf import INRF3D
+from neural_canvas.runners import inrf_runner
 from neural_canvas import imwrite
 
 # Define the size of the image
@@ -132,11 +134,11 @@ width = 512
 height = 512
 
 # Create a 2D implicit neural representation model
-model = INDF2D(width, height)
+model = INRF3D(width, height)
 # Wrap model in a runner to allow generation and saving utilities
-model = indf_runner(model, logdir='outputs/hello_canvas')
+model = inrf_runner(model, logdir='outputs/hello_canvas')
 # Generate and save 10 images
-model.generate(num=10)
+model.generate()
 ```
 
 ### Render 3D volumetric data with PyVista and Fiji
