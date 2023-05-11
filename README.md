@@ -60,7 +60,7 @@ Choose a different architecture quickly, or with more control
 model = INRF2D(graph_topology='ws') # init Watts-Strogatz graph
 # is equivalent to 
 model.init_map_fn(mlp_layer_width=32,
-                  activations='random,
+                  activations='random',
                   final_activation=None,
                   weight_init='normal',
                   num_graph_nodes=20,
@@ -87,23 +87,25 @@ For example, we can instantiate the following function to fit an image
 
 ```python3
 from neural_canvas.models import INRF2D
-from imagio import imread
+from neural_canvas.utils import load_image_as_tensor
+import numpy as np
 
-img = imread('neural_canvas/assets/logo.jpg')
-model = INRF2D()
-neural_data = model.fit(img)  # returns a implicit neural representation of the image
+img = load_image_as_tensor('neural_canvas/assets/logo.jpg')
+model = INRF2D(device='cpu') # or 'cuda'
+model.init_map_fn(activations='GELU', weight_init='dip', graph_topology='conv', final_activation='tanh') # better params for fitting
+model.fit(img)  # returns a implicit neural representation of the image
 
-print (neural_data.size())  # return size of neural representation
+print (model.size)  # return size of neural representation
 # >> 8547
 print (img.size)
 # >> 196608
 
 # get original data
-img_original = neural_data.data()
+img_original = model.generate()
 print (img_original.shape)
 # >> (256, 256, 3)
 
-img_super_res = neural_data.resize(1024) 
+img_super_res = model.generate(output_shape=(1024,1024)) 
 print (img_super_res.shape)
 # >> (1024, 1024, 3)
 ```
