@@ -44,7 +44,7 @@ model.generate(output_shape=size)
 Re-rendering at a higher resolution actually _adds_ detail, in contrast to traditional interpolation, we can use this fact to zoom in on our image. 
 ```python
 size=(1024, 1024)
-zoom_xy = (10, 10) # xy zoom range is (0, inf)z
+zoom_xy = (10, 10) # xy zoom range is (0, inf)
 model.generate(size=size, zoom=zoom_xy)
 ```
 One caveat is that this simple `.generate(shape)` interface is simplistic, so we can't use this pattern to get fine-grained control over what is generated. To get fine grained control see `examples/generate_image.py`. 
@@ -86,10 +86,10 @@ Furthermore, the neural representation is flexible, and can be used to extend th
 For example, we can instantiate the following function to fit an image
 
 ```python3
-from neural_canvas.functions import fit_image
+from neural_canvas.models import INRF2D
 from imagio import imread
 
-img = imread('neural_canvas/assets/logo.png')
+img = imread('neural_canvas/assets/logo.jpg')
 model = INRF2D()
 neural_data = model.fit(img)  # returns a implicit neural representation of the image
 
