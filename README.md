@@ -38,10 +38,14 @@ model.generate(output_shape=size)
 Importantly, the instantiated INRF is a neural representation of the output image, meaning that we can do things like modify the image size just by passing in a larger coordinate set. We will also do this by explicitly generating the input fields with `init_latent_inputs`. The returned `meta_latents` can be used for saving and reloading model settings.
 
 ```python
+from neural_canvas import utils 
+import matplotlib.pyplot as plt
+
 size = (1024, 1024)
-latents, fields, meta_latents = model.init_latent_inputs(output_shape=size)
+latents, fields = model.init_latent_inputs(output_shape=size)
 
 model.generate(output_shape=size)
+
 ```
 Re-rendering at a higher resolution actually _adds_ detail, in contrast to traditional interpolation, we can use this fact to zoom in on our image. This requires a little more manipulation of the inputs to the `generate` function, specifically by changing the coordinates (fields) we use for generation, we're able to `pan` and `zoom` 
 ```python

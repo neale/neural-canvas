@@ -602,17 +602,17 @@ class INRF3D(INRFBase):
             weight_init_max (float): maximum value of the weight initialization
             graph (torch.Tensor): networkx string representation of the graph
         """
-        if graph_topology.lower() == 'mlp':
+        if graph_topology == 'mlp':
             map_fn = INRLinearMap3D(
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
                 activations=activations, final_activation=final_activation)
 
-        elif graph_topology.lower() == 'conv':
+        elif graph_topology == 'conv':
             map_fn = INRConvMap3D(
                 self.latent_dim, self.c_dim, self.latent_scale, feature_dim=conv_feature_map_size,
                 activations=activations, final_activation=final_activation)
             
-        elif graph_topology.lower() == 'WS':
+        elif graph_topology == 'WS':
             map_fn = INRRandomGraph3D(
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
                 num_graph_nodes=num_graph_nodes, graph=graph,
@@ -620,17 +620,6 @@ class INRF3D(INRFBase):
         else:
             raise NotImplementedError(f'Graph topology `{graph_topology}` not implemented')
 
-        # initialize weights
-        if weight_init == 'normal':
-            map_fn = init_weights_normal(map_fn, weight_init_mean, weight_init_std)
-        elif weight_init == 'uniform':
-            map_fn = init_weights_uniform(map_fn, weight_init_min, weight_init_max)
-        elif weight_init == 'dip':
-            map_fn = init_weights_dip(map_fn)
-        elif weight_init == 'siren':
-            map_fn = init_weights_siren(map_fn)
-        else:
-            raise NotImplementedError(f'weight init {weight_init} not implemented')
         self.mlp_layer_width = mlp_layer_width
         self.conv_feature_map_size = conv_feature_map_size
         self.activations = activations
