@@ -6,9 +6,11 @@ import shutil
 import numpy as np
 import torch
 import logging
-
+import warnings
 
 from neural_canvas.utils import utils
+from neural_canvas.utils.positional_encodings import FourierEncoding
+from neural_canvas.losses import losses
 from neural_canvas.models.inrf import INRF3D
 
 
@@ -65,7 +67,7 @@ class RunnerINRF3D:
         """
         Generate volumes from a trained model
         Args:
-            latents: (torch.tensor, optional) latent vector to use for generation
+            latents: (dicts, optional) latent vector information to use for generation
             num_samples: (int, optional) number of volumes to generate
             zoom_schedule: (list, optional) list of zoom values to use for generation
             pan_schedule: (list, optional) list of pan values to use for generation
@@ -81,7 +83,7 @@ class RunnerINRF3D:
         #    splits = 128 - (self.model.x_dim % 512)
         #else:
         #    splits = 1
-        assert self.model, 'Must provide a model to generate from'
+        assert self.model, 'Must provide a model to generate from, self.model is None'
         volumes = []
         metadata = []
         randID = torch.randint(0, 99999999, size=(1,)).item()
@@ -95,9 +97,9 @@ class RunnerINRF3D:
                 pan = pan_schedule[i]
             else:
                 pan = (2, 2, 2)
-            latents_gen, inputs, meta_latents = self.model.init_latent_inputs(latents=latents,
-                                                                              zoom=zoom,
-                                                                              pan=pan) 
+            latents_gen, inputs = self.model.init_latent_inputs(latents=latents,
+                                                                zoom=zoom,
+                                                                pan=pan) 
             volume = self.model.generate(latents_gen, inputs, splits)
             volume = volume.reshape(-1, self.model.x_dim, self.model.y_dim, self.model.z_dim, self.model.c_dim)
             if volume.ndim == 5 and volume.shape[0] == 1:
@@ -113,7 +115,7 @@ class RunnerINRF3D:
                 if np.abs(volume.max() - volume.min()) < 5:
                     self.logger.info('skipping blank output')
                     continue
-            metadata.append(self.model._metadata(meta_latents))
+            metadata.append(self.model._metadata(latents_gen))
             if autosave:
                 save_fn = os.path.join(self.output_dir, f'{self.save_prefix}_{randID}_{i}')
                 if self.save_verbose:
@@ -133,16 +135,18 @@ class RunnerINRF3D:
             path: (str) path to metadata file
             output_shape: (tuple[int]) new shape (4,) for the model
         Returns:
-            latent: (torch.FloatTensor) latent vector used for generation    
+            latents: (dict) latent vector information used for generation    
         """
         metadata = utils.load_tif_metadata(path)
-        assert len(output_shape) == 4, f'Invalid output shape: {output_shape}'
+        assert len(output_shape) == 4, f'Invalid output shape: `{output_shape}`, need ndim=4'
         model = INRF3D(output_shape=output_shape,
                        output_dir=self.output_dir,
                        latent_dim=metadata['latent_dim'],
                        latent_scale=metadata['latent_scale'],
                        seed=metadata['seed'])
         model.init_map_fn(mlp_layer_width=metadata['mlp_layer_width'],
+                          conv_feature_map_size=metadata['conv_feature_map_size'],
+                          input_encoding_dim=metadata['input_encoding_dim'],
                           activations=metadata['activations'],
                           final_activation=metadata['final_activation'],
                           weight_init=metadata['weight_init'],
@@ -154,7 +158,7 @@ class RunnerINRF3D:
                           num_graph_nodes=metadata['num_graph_nodes'],
                           graph=metadata['graph'],)
         self.model = model
-        return metadata['latent']
+        return metadata['latents']
 
     def regen_volumes(self,
                       path,
@@ -194,13 +198,13 @@ class RunnerINRF3D:
             basename = os.path.basename(path)
             save_fn = os.path.join(self.output_dir, f'{basename[:-4]}_reproduce')
             # load metadata from given tif file(s)
-            latent = self.reinit_model_from_metadata(path, output_shape)
-            volumes, metadata = self.run_volumes(latent,
-                                               num_samples=num_samples,
-                                               zoom_schedule=zoom_schedule,
-                                               pan_schedule=pan_schedule,
-                                               splits=splits,
-                                               autosave=False)
+            latents = self.reinit_model_from_metadata(path, output_shape)
+            volumes, metadata = self.run_volumes(latents=latents,
+                                                 num_samples=num_samples,
+                                                 zoom_schedule=zoom_schedule,
+                                                 pan_schedule=pan_schedule,
+                                                 splits=splits,
+                                                 autosave=False)
             self.logger.info(f'saving {len(volumes)} TIFF/PNG images at: {save_fn} of size: {volumes[0].shape}')
             for i, (volume, meta) in enumerate(zip(volumes, metadata)):
                 utils.write_image(path=f'{save_fn}_{i}', img=volume, suffix='png', colormaps=self.colormaps)
@@ -209,3 +213,86 @@ class RunnerINRF3D:
                 utils.write_video(volumes, self.output_dir, save_name=basename)
             volumes = None
         return volumes
+    
+    def fit(self,
+            target,
+            output_shape,
+            loss_weights,
+            num_epochs=50,
+            num_iters_per_epoch=100,
+            lr=1e-3,
+            weight_decay=1e-5,
+            use_fourier_encoding=False,
+            num_freqs=5,
+            device='cpu'):
+        """fits model to target image
+        Args:
+            target: (torch.Tensor) target image
+            output_shape: (tuple[int]) new shape for the model
+            loss_weights: (dict) dictionary of loss weights
+            num_epochs: (int, optional) number of epochs to train for
+            n_iters_per_epoch: (int, optional) number of iterations per epoch
+            lr: (float, optional) learning rate
+            weight_decay: (float, optional) weight decay
+        """
+        warnings.warn('Naive 3D volume fitting, will consume large amount of disk space')
+        warnings.warn('Fitting on CPU, will be slow')
+        assert self.model is not None, 'Must initialize model before fitting'
+        optimizer = torch.optim.AdamW(self.model.map_fn.parameters(), 
+                                      lr=lr,
+                                      weight_decay=weight_decay,
+                                      betas=(.9, .999),
+                                      eps=1e-7) # support future half precision
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer, T_0=200, T_mult=2)
+        loss = losses.LossModule(**loss_weights)
+        epoch_iterator = tqdm.tqdm(range(num_epochs))
+        latents, inputs = self.model.init_latent_inputs()
+        test_latents, test_inputs, _ = self.model.init_latent_inputs(
+            reuse_latents=latents,
+            output_shape=output_shape)
+        if use_fourier_encoding:
+            input_encoding = FourierEncoding(num_freqs).to(device)
+            inputs = input_encoding(inputs)
+            test_inputs = input_encoding(test_inputs)
+
+        loss_vals = []
+        for epoch in epoch_iterator:
+            volume, test_volume, loss_val = self.model.fit(target,
+                                                          num_iters_per_epoch,
+                                                          loss,
+                                                          optimizer=optimizer,
+                                                          scheduler=scheduler,
+                                                          inputs=(latents, inputs),
+                                                          test_inputs=(test_latents, test_inputs),
+                                                          test_resolution=output_shape,)
+            epoch_iterator.set_description(f'Epoch: {epoch}, Loss: {loss_val:.4f}')
+            loss_vals.append(loss_val.item())
+
+            if volume.ndim == 5 and volume.shape[0] == 1:
+                volume = volume[0]
+            if test_volume.ndim == 5 and test_volume.shape[0] == 1:
+                test_volume = test_volume[0]
+            volume = volume.permute(1, 2, 0)
+            test_volume = test_volume.permute(1, 2, 0)
+            volume = volume.detach().cpu().numpy()
+            test_volume = test_volume.detach().cpu().numpy()
+            if self.model.map_fn.final_activation == 'tanh':
+                volume = ((volume + 1.) * 127.5).astype(np.uint8)
+                test_volume = ((test_volume + 1.) * 127.5).astype(np.uint8)
+            else:
+                volume = (volume * 255).astype(np.uint8)
+                test_volume = (test_volume * 255).astype(np.uint8)
+
+            metadata = self.model._metadata(latent=latents)
+            test_metadata = self.model._metadata(latent=test_latents)
+            utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=volume, 
+                suffix='png')
+            utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=volume, 
+                suffix='tif', metadata=metadata)
+            utils.write_image(path=f'{self.output_dir}/fit_{epoch}_test', img=test_volume, 
+                suffix='png')
+            utils.write_image(path=f'{self.output_dir}/fit_{epoch}_test', img=test_volume, 
+                suffix='tif', metadata=test_metadata)
+        self.logger.info(f'Finished fitting model')
+        return loss_vals

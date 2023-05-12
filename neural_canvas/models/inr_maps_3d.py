@@ -13,7 +13,7 @@ class INRRandomGraph3D(nn.Module):
                  layer_width,
                  num_graph_nodes,
                  graph=None,
-                 activations='basic',
+                 activations='fixed',
                  final_activation='sigmoid',
                  name='INRRandomGraph3D'):
         super(INRRandomGraph3D, self).__init__()
@@ -36,14 +36,14 @@ class INRRandomGraph3D(nn.Module):
         self.scale = ScaleAct()
         if self.activations == 'random':
             acts = [randact(activation_set='large') for _ in range(7)]
-        elif self.activations == 'basic':
+        elif self.activations == 'fixed':
             acts = [nn.SiLU(), nn.ELU(), nn.Softplus(), nn.Tanh(), 
                     Gaussian(), SinLayer(), nn.GELU()]
         elif hasattr(torch.nn, activations):
             acts = [getattr(torch.nn, activations)() for _ in range(7)]
         else:
-            raise ValueError('activations must be basic, random, '\
-                             'or else a valid torch.nn activation')
+            raise ValueError('activations must be fixed, random, ' \
+                             f'or else a valid torch.nn activation, got `{activations}`')
         self.acts_start = nn.ModuleList(acts)
         # init graph parameters
         k = 4
@@ -105,7 +105,7 @@ class INRLinearMap3D(nn.Module):
                  latent_dim,
                  c_dim,
                  layer_width,
-                 activations='basic',
+                 activations='fixed',
                  final_activation='sigmoid',
                  name='INRLinearMap3D'):
         super(INRLinearMap3D, self).__init__()
@@ -130,13 +130,13 @@ class INRLinearMap3D(nn.Module):
 
         if self.activations == 'random':
             acts = [randact(activation_set='large') for _ in range(5)]
-        elif self.activations == 'basic':
+        elif self.activations == 'fixed':
             acts = [nn.GELU(), nn.Tanh(), nn.ELU(), SinLayer(), ScaleAct()]
         elif hasattr(torch.nn, activations):
             acts = [getattr(torch.nn, activations)() for _ in range(5)]
         else:
-            raise ValueError('activations must be `basic`, `random`, '\
-                             'or else a valid torch.nn activation')
+            raise ValueError('activations must be `fixed`, `random`, ' \
+                             f'or else a valid torch.nn activation, got `{activations}`')
         self.acts = nn.ModuleList(acts)
 
         if self.final_activation == 'sigmoid':
@@ -195,7 +195,7 @@ class INRConvMap3D(nn.Module):
                  latent_dim,
                  c_dim,
                  feature_dim,
-                 activations='basic',
+                 activations='fixed',
                  final_activation='sigmoid',
                  name='INRConvMap3D'):
         super(INRConvMap3D, self).__init__()
@@ -219,14 +219,14 @@ class INRConvMap3D(nn.Module):
 
         if self.activations == 'random':
             acts = [randact(activation_set='large') for _ in range(8)]
-        elif self.activations == 'basic':
+        elif self.activations == 'fixed':
             acts = [nn.GELU(), nn.ELU(), nn.Softplus(), nn.Tanh(), SinLayer(),
                     nn.Tanh(), nn.ELU(), nn.Softplus(), CosLayer(), ScaleAct()]
         elif hasattr(torch.nn, activations):
             acts = [getattr(torch.nn, activations)() for _ in range(8)]
         else:
-            raise ValueError('activations must be `basic`, `random`, '\
-                             'or else a valid torch.nn activation')
+            raise ValueError('activations must be `fixed`, `random`, ' \
+                             f'or else a valid torch.nn activation, got `{activations}`')
         self.acts = nn.ModuleList(acts)
 
         self.norms = nn.ModuleList([nn.Identity() for _ in range(8)])

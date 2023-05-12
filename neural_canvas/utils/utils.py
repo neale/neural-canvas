@@ -26,9 +26,9 @@ def lerp(z1, z2, n):
     return states
 
 
-def load_image_as_tensor(path, output_dir, device='cpu'):
+def load_image_as_tensor(path, output_dir='/tmp', device='cpu'):
     target = cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
-    target = target / 127.5 - 1 #* 255.
+    target = target / 127.5 - 1 
     target = torch.from_numpy(target).permute(2, 0, 1).unsqueeze(0).float().to(device)
     target_fn = f'{output_dir}/target'
     if not os.path.isdir(output_dir):
@@ -37,6 +37,13 @@ def load_image_as_tensor(path, output_dir, device='cpu'):
         img=target.permute(0, 2, 3, 1)[0].cpu().numpy()*255, suffix='jpg')
     return target
 
+def unnormalize_and_numpy(x, bounds=(-1, 1)):
+    x = x.detach().cpu().numpy()
+    if bounds == (-1, 1):
+        x = ((x + 1.) * 127.5).astype(np.uint8)
+    elif bounds == (0, 1):
+        x = (x * 255.).astype(np.uint8)
+    return x
 
 def write_image(path, img, suffix='jpg', metadata=None, colormaps=None):
     assert suffix in ['jpg', 'png', 'bmp', 'jpeg', 'tif'], f'Invalid suffix for file, got {suffix}'
@@ -109,7 +116,7 @@ def load_tif_metadata(path):
     except:
         warnings.warn(f'Could not load metadata from {path}')
         return None, None
-    metadata = {
+    metadata = {  # these are the keys that are always present
         'seed': int(data['seed']),
         'latent_dim': int(data['latent_dim']),
         'latent_scale': float(data['latent_scale']),
@@ -117,7 +124,6 @@ def load_tif_metadata(path):
         'y_dim': int(data['y_dim']),
         'c_dim': int(data['c_dim']),
         'device': data['device'],
-        'latent': torch.tensor(data['latent'])
     }
     for int_key in ['mlp_layer_width', 'conv_feature_map_size', 'input_encoding_dim', 'num_graph_nodes']:
         try:
@@ -137,6 +143,12 @@ def load_tif_metadata(path):
         except KeyError:
             metadata[str_key] = None
             warnings.warn(f'Key {str_key} not found in metadata, setting to None.')
+    for dict_key in ['latents']:
+        try:
+            metadata[dict_key] = data[dict_key]
+        except KeyError:
+            metadata[dict_key] = None
+            warnings.warn(f'Key {dict_key} not found in metadata, setting to None.')
     return img, metadata
 
 

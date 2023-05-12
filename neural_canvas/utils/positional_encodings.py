@@ -36,7 +36,7 @@ def coordinates_3D(x_dim, y_dim, z_dim, batch_size, zoom, pan, scale, as_mat=Fal
     x_mat, y_mat, z_mat = torch.meshgrid(x_range, y_range, z_range, indexing='ij')
     r_mat = torch.sqrt(x_mat * x_mat + y_mat * y_mat + z_mat * z_mat)
     if as_mat:
-        return x_mat, y_mat, r_mat, n_pts
+        return x_mat, y_mat, z_mat, r_mat
     x_vec = x_mat.flatten().repeat(batch_size).view(batch_size * n_pts, -1)
     y_vec = y_mat.flatten().repeat(batch_size).view(batch_size * n_pts, -1)
     z_vec = z_mat.flatten().repeat(batch_size).view(batch_size * n_pts, -1)

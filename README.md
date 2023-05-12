@@ -35,17 +35,21 @@ model = INRF2D()
 size = (256, 256)
 model.generate(output_shape=size)
 ```
-Importantly, the instantiated INRF is a neural representation of the output image, meaning that we can do things like modify the image size just by passing in a larger coordinate set
+Importantly, the instantiated INRF is a neural representation of the output image, meaning that we can do things like modify the image size just by passing in a larger coordinate set. We will also do this by explicitly generating the input fields with `init_latent_inputs`. The returned `meta_latents` can be used for saving and reloading model settings.
 
 ```python
 size = (1024, 1024)
+latents, fields, meta_latents = model.init_latent_inputs(output_shape=size)
+
 model.generate(output_shape=size)
 ```
-Re-rendering at a higher resolution actually _adds_ detail, in contrast to traditional interpolation, we can use this fact to zoom in on our image. 
+Re-rendering at a higher resolution actually _adds_ detail, in contrast to traditional interpolation, we can use this fact to zoom in on our image. This requires a little more manipulation of the inputs to the `generate` function, specifically by changing the coordinates (fields) we use for generation, we're able to `pan` and `zoom` 
 ```python
-size=(1024, 1024)
 zoom_xy = (10, 10) # xy zoom range is (0, inf)
-model.generate(size=size, zoom=zoom_xy)
+pan_xy = (5, -5) # pan range is (-inf inf)
+
+_, fields, _ = model.init_latent_inputs(reuse_latents=meta_latents, zoom=zoom_xy, pan=pan_xy)
+model.generate(size=size, zoom=zoom_xy, pan=pan_xy)
 ```
 One caveat is that this simple `.generate(shape)` interface is simplistic, so we can't use this pattern to get fine-grained control over what is generated. To get fine grained control see `examples/generate_image.py`. 
 
@@ -97,7 +101,7 @@ model.fit(img)  # returns a implicit neural representation of the image
 
 print (model.size)  # return size of neural representation
 # >> 8547
-print (img.size)
+print (np.prod(img.shape))
 # >> 196608
 
 # get original data
@@ -116,35 +120,56 @@ print (img_super_res.shape)
 * `utils.positional_encodings.FourierEncoding` defines an alternating `Sin`, `Cos` encoding for a fixed number of frequencies. In practice this works quite a bit better for `INRFConvMap` architectures than any linear network, possibly due to the input channel concatenation. 
 * See `examples/fit_2d_conf.yaml` for an example of fitting a target image utilizing these positional encodings.   
 
-## 2D generators
-
-Neural canvas provides a set of easy-to-use APIs for generating artwork with implicit neural representations. Here's an example of how to generate an image with a 2D Implicit Neural Representation Function:
 
 
-
-## 3D generators
+## Volume generation with 3D INRFs
 
 Neural canvas provides a set of easy-to-use APIs for generating artwork with implicit neural representations. Here's an example of how to generate an image with a 2D Implicit Neural Representation Function:
 
 ```python
 from neural_canvas.models.inrf import INRF3D
-from neural_canvas.runners import inrf_runner
-from neural_canvas import imwrite
-
-# Define the size of the image
-width = 512
-height = 512
 
 # Create a 2D implicit neural representation model
-model = INRF3D(width, height)
-# Wrap model in a runner to allow generation and saving utilities
-model = inrf_runner(model, logdir='outputs/hello_canvas')
-# Generate and save 10 images
-model.generate()
+model = INRF3D()
+# Generate the image given by the random INRF
+size = (256, 256, 256)
+model.generate(output_shape=size)
+
+# We can do all the same transformations as with 2D INRFs
+# Warning: 3D generation consumes large amounts of memory. With 64GB of RAM, 1500**3 is the max size
+# `splits` generates the volume in parts to consume less memory
+size = (1000, 1000)
+latents, fields, meta_latents = model.init_latent_inputs(output_shape=size, splits=100)
+
+model.generate(output_shape=size)
 ```
 
 ### Render 3D volumetric data with PyVista and Fiji
 
+The simplest way to render out the 3D volumetric data is with a package like [PyVista](https://docs.pyvista.org/version/stable/) which is highly configurable and integrates nicely with the python ecosystem. 
+
+```python
+import pyvista as pv
+import numpy as np
+import neural_canvas.utils as utils
+
+size = (256, 256, 256)
+vol = model.generate(output_shape=size)
+rgb = utils.unnormalize_and_numpy(vol, bounds=(0, 1)).reshape(-1, 3)
+rgba = np.concatenate((rgb, np.ones((rgb.shape[0], 1), dtype=np.uint8)), 1)
+
+grid = pv.UniformGrid(dimensions=size)
+p = pv.Plotter(notebook=False)
+p.add_volume(grid, scalars=rgba)
+p.show()
+```
+The display should look something like the below image
+![pyvista_img](./neural_canvas/assets/pyvista_example.png)
+
+We can also use Fiji (is not ImageJ) to render the 3D data, but this involves a plugin that I have not written yet, otherwise its a process that's easy to figure out with a little googling
+
+## Coming Soon: Fitting INRFs to 3D data with NERFs
+WIP
 
 ## Contributions
 

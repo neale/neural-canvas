@@ -6,12 +6,13 @@ import shutil
 import numpy as np
 import torch
 import logging
+import warnings
 
 from neural_canvas.utils import utils
 from neural_canvas.utils.positional_encodings import FourierEncoding
 from neural_canvas.losses import losses
 from neural_canvas.models.inrf import INRF2D
-from neural_canvas.models.inr_maps_2d import INRConvMap
+
 
 class RunnerINRF2D:
     def __init__(self, 
@@ -66,7 +67,7 @@ class RunnerINRF2D:
         """
         Generate frames from a trained model
         Args:
-            latents: (torch.tensor, optional) latent vector to use for generation
+            latents: (dict, optional) latent vector information to use for generation
             num_samples: (int, optional) number of frames to generate
             zoom_schedule: (list, optional) list of zoom values to use for generation
             pan_schedule: (list, optional) list of pan values to use for generation
@@ -96,12 +97,12 @@ class RunnerINRF2D:
                 pan = pan_schedule[i]
             else:
                 pan = (2, 2)
-            latents_gen, inputs, meta_latents = self.model.init_latent_inputs(latents=latents,
-                                                                              zoom=zoom,
-                                                                              pan=pan) 
-            frame = self.model.generate(latents_gen, inputs, splits)
-            frame = frame.reshape(-1, self.model.x_dim, self.model.y_dim, self.model.c_dim)
+            latents_gen, fields = self.model.init_latent_inputs(reuse_latents=latents,
+                                                                zoom=zoom,
+                                                                pan=pan) 
+            frame = self.model.generate(latents_gen, fields, splits)
 
+            frame = frame.reshape(-1, self.model.x_dim, self.model.y_dim, self.model.c_dim)
             if frame.ndim == 4 and frame.shape[0] == 1:
                 frame = frame[0]
             frame = frame.cpu().numpy()
@@ -116,7 +117,7 @@ class RunnerINRF2D:
                 if np.abs(frame.max() - frame.min()) < 15:
                     self.logger.info('skipping blank output')
                     continue
-            metadata.append(self.model._metadata(meta_latents))
+            metadata.append(self.model._metadata(latents_gen))
             if autosave:
                 save_fn = os.path.join(self.output_dir, f'{self.save_prefix}_{randID}_{i}')
                 if self.save_verbose:
@@ -134,7 +135,7 @@ class RunnerINRF2D:
             path: (str) path to metadata file
             output_shape: (tuple[int]) new shape (3,) for the model
         Returns:
-            latent: (torch.FloatTensor) latent vector used for generation    
+            latents: (dict) latent vector information used for generation    
         """
         if metadata is None:
             _, metadata = utils.load_tif_metadata(path)
@@ -158,7 +159,7 @@ class RunnerINRF2D:
                           num_graph_nodes=metadata['num_graph_nodes'],
                           graph=metadata['graph'],)
         self.model = model
-        return metadata['latent']
+        return metadata['latents']
 
     def regen_frames(self,
                      path,
@@ -205,8 +206,9 @@ class RunnerINRF2D:
             else:
                 print ('Running reproduction for: ', path, 'saving at: ', save_fn)
             # load metadata from given tif file(s)
-            latent = self.reinit_model_from_metadata(path=path, output_shape=output_shape)
-            frames, metadata = self.run_frames(latent,
+            latents = self.reinit_model_from_metadata(path=path, output_shape=output_shape)
+  
+            frames, metadata = self.run_frames(latents=latents,
                                                num_samples=num_samples,
                                                zoom_schedule=zoom_schedule,
                                                pan_schedule=pan_schedule,
@@ -245,6 +247,7 @@ class RunnerINRF2D:
             lr: (float, optional) learning rate
             weight_decay: (float, optional) weight decay
         """
+        warnings.warn('Fitting on CPU, will be slow')
         assert self.model is not None, 'Must initialize model before fitting'
         optimizer = torch.optim.AdamW(self.model.map_fn.parameters(), 
                                       lr=lr,
@@ -255,9 +258,9 @@ class RunnerINRF2D:
             optimizer, T_0=200, T_mult=2)
         loss = losses.LossModule(**loss_weights)
         epoch_iterator = tqdm.tqdm(range(num_epochs))
-        latents, inputs, mlatents = self.model.init_latent_inputs()
+        latents, inputs = self.model.init_latent_inputs()
         test_latents, test_inputs, _ = self.model.init_latent_inputs(
-            latents=mlatents if 'conv' not in self.model.graph_topology else None,
+            reuse_latents=latents,
             output_shape=output_shape)
         if use_fourier_encoding:
             input_encoding = FourierEncoding(num_freqs).to(device)
@@ -266,11 +269,11 @@ class RunnerINRF2D:
 
         loss_vals = []
         for epoch in epoch_iterator:
-            frame, test_frame, loss_val = self.model.fit(num_iters_per_epoch,
-                                                         target,
+            frame, test_frame, loss_val = self.model.fit(target,
+                                                         num_iters_per_epoch,
                                                          loss,
-                                                         optimizer,
-                                                         scheduler,
+                                                         optimizer=optimizer,
+                                                         scheduler=scheduler,
                                                          inputs=(latents, inputs),
                                                          test_inputs=(test_latents, test_inputs),
                                                          test_resolution=output_shape,)
@@ -292,11 +295,16 @@ class RunnerINRF2D:
                 frame = (frame * 255).astype(np.uint8)
                 test_frame = (test_frame * 255).astype(np.uint8)
 
-
-            utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=frame, suffix='png')
-            utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=frame, suffix='tif')
-            utils.write_image(path=f'{self.output_dir}/fit_{epoch}_test', img=test_frame, suffix='png')
-            utils.write_image(path=f'{self.output_dir}/fit_{epoch}_test', img=test_frame, suffix='tif')
+            metadata = self.model._metadata(latent=latents)
+            test_metadata = self.model._metadata(latent=test_latents)
+            utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=frame, 
+                suffix='png')
+            utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=frame, 
+                suffix='tif', metadata=metadata)
+            utils.write_image(path=f'{self.output_dir}/fit_{epoch}_test', img=test_frame, 
+                suffix='png')
+            utils.write_image(path=f'{self.output_dir}/fit_{epoch}_test', img=test_frame, 
+                suffix='tif', metadata=test_metadata)
         self.logger.info(f'Finished fitting model')
         return loss_vals
 
