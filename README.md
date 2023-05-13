@@ -126,7 +126,7 @@ from neural_canvas.models import INRF2D
 from neural_canvas.utils import load_image_as_tensor
 import numpy as np
 
-img = load_image_as_tensor('neural_canvas/assets/logo.jpg')
+img = load_image_as_tensor('neural_canvas/assets/logo.jpg')[0]
 model = INRF2D(device='cpu') # or 'cuda'
 model.init_map_fn(activations='GELU', weight_init='dip', graph_topology='conv', final_activation='tanh') # better params for fitting
 model.fit(img)  # returns a implicit neural representation of the image

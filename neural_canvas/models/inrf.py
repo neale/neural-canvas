@@ -9,6 +9,7 @@ from neural_canvas.models.inr_maps_3d import *
 from neural_canvas.models.weight_inits import *
 from neural_canvas.models.inrf_base import INRFBase
 from neural_canvas.utils.positional_encodings import coordinates_2D, coordinates_3D
+from neural_canvas.utils import unnormalize_and_numpy
 
 
 logging.getLogger().setLevel(logging.ERROR)
@@ -286,7 +287,7 @@ class INRF2D(INRFBase):
         if self.graph_topology == 'conv':  #
             sample = torch.ones(batch_size, self.latent_dim, x_dim, y_dim)
             latents['sample'] = sample.uniform_(-2, 2)
-            latents['inputs'] = latents['sample'].clone()
+            latents['input'] = latents['sample'].clone()
         else:
             if 'sample' not in latents.keys():
                 sample = torch.ones(batch_size, 1, self.latent_dim)
@@ -303,7 +304,6 @@ class INRF2D(INRFBase):
                  output_shape=None,
                  splits=1,
                  sample_latent=False,
-                 retain_graph=False,
                  unnormalize_output=True):
         """
         samples from the forward map
@@ -317,7 +317,6 @@ class INRF2D(INRFBase):
                 (`self.x_dim`, `self.y_dim`, self.z_dim`)
             splits (int): number of splits to use for sampling. Used to reduce memory usage
             sample_latent (bool): whether to sample random latent inputs
-            retain_graph (bool): whether to retain the graph for backpropagation
             unnormalize_output (bool): whether to unnormalize the output
         Returns:
             frame (torch tensor): sampled frame
@@ -330,9 +329,10 @@ class INRF2D(INRFBase):
                     latents = self.sample_latents(output_shape=fields['shape'])                
 
         else: 
-            fields = self.construct_fields(output_shape=output_shape)
+            if fields is None:
+                fields = self.construct_fields(output_shape=output_shape)
             if latents is not None:
-                if fields['shape'] != latents.shape:
+                if fields['shape'] != latents['sample_shape']:
                     latents = self.sample_latents(
                         output_shape=output_shape, reuse_latents=latents)
             if sample_latent:
@@ -340,7 +340,6 @@ class INRF2D(INRFBase):
 
         batch_size = fields['shape'][0]
         output_shape = fields['shape'] + (self.c_dim,)
-
         if latents is not None:
             latent = latents['input']
             if 'mlp' in self.graph_topology or 'WS' in self.graph_topology: # flatten inputs
@@ -378,20 +377,19 @@ class INRF2D(INRFBase):
                 os.remove(temp)
         else:
             raise ValueError(f'splits must be >= 1, got {splits}')
-        frame = frame.reshape(output_shape)
+
+        if self.graph_topology in ['mlp', 'WS']:
+            frame = frame.reshape(output_shape)
+        elif self.graph_topology == 'conv':
+            frame = frame.permute(0, 2, 3, 1) # [B, C, H, W] -> [B, H, W, C]
         if unnormalize_output:
-            if self.map_fn.final_activation == 'tanh':
-                frame = (frame + 1.) * 127.5
-            else:
-                frame = frame * 255.
-        if not retain_graph:
-            frame = frame.detach().cpu().numpy().astype(np.uint8)
+            frame = unnormalize_and_numpy(frame, self.map_fn.final_activation)
         self.logger.debug(f'Output Frame Shape: {frame.shape}')
         return frame
 
     def fit(self,
             target,
-            n_iters=100,
+            n_iters=201,
             loss=None,
             optimizer=None,
             scheduler=None,
@@ -416,18 +414,18 @@ class INRF2D(INRFBase):
         if isinstance(target, np.ndarray):
             target = torch.from_numpy(target).float()
 
-        assert target.ndim == 3, f'target must have (H, W, C) dimensions, got {target.shape}'
+        assert target.ndim == 3, f'target must have (C, H, W) dimensions, got {target.shape}'
         target = target.to(self.device)
-        self.x_dim, self.y_dim, self.c_dim = target.shape
+        self.c_dim, self.x_dim, self.y_dim = target.shape
 
         if inputs is None:
-            latents, fields, mlatents = self.init_latent_inputs(
-                output_shape=target.shape[1:])
+            latents = self.sample_latents(output_shape=target.shape[1:])
+            fields = self.construct_fields(output_shape=target.shape[1:])
         else:
             latents, fields = inputs
         if test_inputs is None:
-            test_latents, test_fields, _ = self.init_latent_inputs(
-                mlatents, output_shape=test_resolution)
+            test_latents = self.sample_latents(output_shape=test_resolution[:-1])   
+            test_fields = self.construct_fields(output_shape=test_resolution[:-1])
         else:
             test_latents, test_fields = test_inputs
         assert isinstance(target, (torch.Tensor, np.ndarray)), 'target must' \
@@ -439,17 +437,21 @@ class INRF2D(INRFBase):
             optimizer = torch.optim.AdamW(
                 self.map_fn.parameters(), lr=5e-3, weight_decay=1e-5)
 
-        for _ in range(n_iters):
+        target = target.unsqueeze(0)
+        for it in range(n_iters):
             optimizer.zero_grad()
-            frame = self.map_fn(fields, latents)
+            frame = self.map_fn(fields['coords'], latents['input'])
             frame = frame.reshape(target.shape)
             loss_val = loss(frame, target)
             loss_val.backward()
             optimizer.step()
             if scheduler is not None:
                 scheduler.step()
-        test_frame = self.map_fn(test_fields, test_latents)
+            
+        test_frame = self.map_fn(test_fields['coords'], test_latents['input'])
         test_frame = test_frame.reshape(test_resolution)
+        test_frame = unnormalize_and_numpy(test_frame, self.map_fn.final_activation)
+        frame = unnormalize_and_numpy(frame[0].permute(1, 2, 0), self.map_fn.final_activation)
         return frame, test_frame, loss_val
 
 
@@ -736,7 +738,6 @@ class INRF3D(INRFBase):
                  output_shape=None,
                  splits=1,
                  sample_latent=False,
-                 retain_graph=False,
                  unnormalize_output=True):
         """
         samples from the forward map
@@ -750,7 +751,6 @@ class INRF3D(INRFBase):
                 (`self.x_dim`, `self.y_dim`, self.z_dim`)
             splits (int): number of splits to use for sampling. Used to reduce memory usage
             sample_latent (bool): whether to sample random latent inputs
-            retain_graph (bool): whether to retain the graph for backpropagation
             unnormalize_output (bool): whether to unnormalize the output
         Returns:
             volume (torch tensor): sampled volume
@@ -818,12 +818,7 @@ class INRF3D(INRFBase):
             raise ValueError(f'splits must be >= 1, got {splits}')
         volume = volume.reshape(output_shape)
         if unnormalize_output:
-            if self.map_fn.final_activation == 'tanh':
-                volume = (volume + 1.) * 127.5
-            else:
-                volume = volume * 255.
-        if not retain_graph:
-            volume = volume.detach().cpu().numpy().astype(np.uint8)
+            volume = unnormalize_and_numpy(volume, self.map_fn.final_activation)
         self.logger.debug(f'Output Frame Shape: {volume.shape}')
         return volume
 
@@ -888,4 +883,6 @@ class INRF3D(INRFBase):
                 scheduler.step()
         test_frame = self.map_fn(test_fields, test_latents)
         test_frame = test_frame.reshape(test_resolution)
+        test_frame = unnormalize_and_numpy(test_frame, self.map_fn.final_activation)
+        frame = unnormalize_and_numpy(frame, self.map_fn.final_activation)
         return frame, test_frame, loss_val

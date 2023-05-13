@@ -261,6 +261,8 @@ class INRConvMap(nn.Module):
     def forward(self, fields, latents=None):
         if latents is not None:
             x = torch.cat([fields, latents], 1)
+        else:
+            x = fields
         x = self.acts[0](self.norms[0](self.conv1(x)))
         x = self.acts[1](self.norms[1](self.conv2(x)))
         x = self.acts[2](self.norms[2](self.conv3(x)))
@@ -274,8 +276,6 @@ class INRConvMap(nn.Module):
     
 
 if __name__ == '__main__':
-    import time
-    times = []
     for _ in range(20):
         model = INRRandomGraph()
     print(model)

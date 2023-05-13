@@ -34,14 +34,14 @@ def load_image_as_tensor(path, output_dir='/tmp', device='cpu'):
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir, exist_ok=True)
     write_image(path=target_fn,
-        img=target.permute(0, 2, 3, 1)[0].cpu().numpy()*255, suffix='jpg')
+        img=(target.permute(0, 2, 3, 1)[0].cpu().numpy()+1)*127.5, suffix='jpg')
     return target
 
-def unnormalize_and_numpy(x, bounds=(-1, 1)):
+def unnormalize_and_numpy(x, output_activation='tanh'):
     x = x.detach().cpu().numpy()
-    if bounds == (-1, 1):
+    if output_activation == 'tanh':
         x = ((x + 1.) * 127.5).astype(np.uint8)
-    elif bounds == (0, 1):
+    else:
         x = (x * 255.).astype(np.uint8)
     return x
 
