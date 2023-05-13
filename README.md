@@ -97,7 +97,7 @@ model = INRF2D(graph_topology='WS') # init Watts-Strogatz graph
 # is equivalent to 
 model.init_map_fn(mlp_layer_width=32,
                   activations='random',
-                  final_activation=None,
+                  final_activation='tanh',
                   weight_init='normal',
                   num_graph_nodes=10,
                   graph_topology='WS',
@@ -132,18 +132,18 @@ model.init_map_fn(activations='GELU', weight_init='dip', graph_topology='conv', 
 model.fit(img)  # returns a implicit neural representation of the image
 
 print (model.size)  # return size of neural representation
-# >> 8547
+# >> 30083
 print (np.prod(img.shape))
 # >> 196608
 
 # get original data
-img_original = model.generate()
-print (img_original.shape)
-# >> (256, 256, 3)
+img_original = model.generate(output_shape=(256, 256), sample_latent=True)
+print ('original size', img_original.shape)
+# >> (1, 256, 256, 3)
 
-img_super_res = model.generate(output_shape=(1024,1024)) 
-print (img_super_res.shape)
-# >> (1024, 1024, 3)
+img_super_res = model.generate(output_shape=(1024,1024), sample_latent=True) 
+print ('super res size', img_super_res.shape)
+# >> (1, 1024, 1024, 3)
 ```
 
 ### Positional Encodings
