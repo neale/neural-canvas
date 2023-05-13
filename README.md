@@ -26,6 +26,10 @@ Just clone and pip install
 
 Lets start with the most basic example
 
+## Quickstart
+
+* The Readme code can all be run from `tests/test_readme.py`.
+
 ## Image generation with 2D INRFs
 
 We can instantiate a 2D INRF with random parameters, by default the architecture is a 4 layer MLP. the INRF will transform _(x, y)_ coordinates and a radius input _r_ into an output image of arbitrary size. Because we use nonstandard activation functions in the MLP, the output image will contain different kinds of patterns, some examples are shown below.
@@ -33,9 +37,6 @@ We can instantiate a 2D INRF with random parameters, by default the architecture
 <div align="center">
 <img src="https://raw.githubusercontent.com/neale/neural-canvas/main/neural_canvas/assets/img_2d_gen.png" alt="gen_img"></img>
 </div>
-
-
-The following code can all be run from `tests/test_readme.py`.
 
 
 ```python
