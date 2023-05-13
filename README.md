@@ -16,6 +16,14 @@ Examples of implicit neural representations include NERFs ([Neural Radiance Fiel
 
 Implicit neural representation functions (INRFs) have a variety of uses, from data compression, to artistic generation. In pratice, INRF's a usually take some structural information, like (x, y) coordinates, and are optimized to fit a single example e.g. NERFs just learn to represent a single scene. Alternatively, random generation is interesting artistically, as 2D and 3D INRFs can be used to produce some really interesting looking artwork. 
 
+## Installation
+
+Just clone and pip install
+
+`git clone https://github.com/neale/neural-canvas`
+
+`pip install .`
+
 Lets start with the most basic example
 
 ## Image generation with 2D INRFs
