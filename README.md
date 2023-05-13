@@ -67,20 +67,20 @@ One caveat is that this simple `.generate(shape)` interface is simplistic, so we
 
 From this its clear that a random INRF is just an embedding of the INRF function into the input coordinate frame. We can change that function by using any of the 3 supported architectures
 
-* MLP with random or specified nonlinearities
-* 1x1 Convolutional stack with random or specified nonlinearities, and optional norms
-* Random Watts-Strogatz graph with random activations 
+* MLP with random or specified nonlinearities: `mlp`
+* 1x1 Convolutional stack with random or specified nonlinearities, and optional norms: `conv`
+* Random Watts-Strogatz graph with random activations: `WS`
 
 Choose a different architecture quickly, or with more control
 ```python
-model = INRF2D(graph_topology='ws') # init Watts-Strogatz graph
+model = INRF2D(graph_topology='WS') # init Watts-Strogatz graph
 # is equivalent to 
 model.init_map_fn(mlp_layer_width=32,
                   activations='random',
                   final_activation=None,
                   weight_init='normal',
-                  num_graph_nodes=20,
-                  graph_topology='ws',
+                  num_graph_nodes=10,
+                  graph_topology='WS',
                   weight_init_mean=0,
                   weight_init_std=3,)
 
