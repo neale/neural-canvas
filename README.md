@@ -61,10 +61,13 @@ latents_lrg = model.sample_latents(output_shape=size, reuse_latents=latents)
 fields_lrg = model.construct_fields(output_shape=size)
 img_lrg = model.generate(latents_lrg, fields_lrg)
 ```
+
 <div align="center">
 <img src="https://raw.githubusercontent.com/neale/neural-canvas/main/neural_canvas/assets/rerendered_img.png" alt="rerendered"></img>
 </div>
+
 Re-rendering at a higher resolution actually _adds_ detail, in contrast to traditional interpolation, we can use this fact to zoom in on our image. This requires a little more manipulation of the inputs to the `generate` function, specifically by changing the coordinates (fields) we use for generation, we're able to `pan` and `zoom` 
+
 ```python
 zoom_xy = (10, 10) # xy zoom range is (0, inf)
 pan_xy = (5, -5) # pan range is (-inf inf)
@@ -72,6 +75,7 @@ pan_xy = (5, -5) # pan range is (-inf inf)
 latents, fields = model.init_latent_inputs(reuse_latents=latents, zoom=zoom_xy, pan=pan_xy)
 img = model.generate(output_shape=size, latents=latents, fields=fields)
 ```
+
 One caveat is that this simple `.generate(shape)` interface is simplistic, so we can't use this pattern to get fine-grained control over what is generated. To get fine grained control see `examples/generate_image.py`. 
 
 From this its clear that a random INRF is just an embedding of the INRF function into the input coordinate frame. We can change that function by using any of the 3 supported architectures
@@ -81,6 +85,7 @@ From this its clear that a random INRF is just an embedding of the INRF function
 * Random Watts-Strogatz graph with random activations: `WS`
 
 Choose a different architecture quickly, or with more control
+
 ```python
 model = INRF2D(graph_topology='WS') # init Watts-Strogatz graph
 # is equivalent to 
