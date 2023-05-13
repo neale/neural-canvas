@@ -6,8 +6,6 @@ import numpy as np
 import networkx
 import collections
 
-import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
 from neural_canvas.models.ops import *
 
 
@@ -83,6 +81,8 @@ def build_random_graph(nodes, input_nodes, output_nodes, p, k):
 
 
 def plot_graph(g, path=None, plot=False):
+    import matplotlib.pyplot as plt
+    import matplotlib.image as mpimg
     dot = networkx.nx_pydot.to_pydot(g)
     png_str = dot.create_png(prog='dot')
     # treat the DOT output as an image file

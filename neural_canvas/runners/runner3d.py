@@ -100,17 +100,9 @@ class RunnerINRF3D:
             latents_gen, inputs = self.model.init_latent_inputs(latents=latents,
                                                                 zoom=zoom,
                                                                 pan=pan) 
-            volume = self.model.generate(latents_gen, inputs, splits)
-            volume = volume.reshape(-1, self.model.x_dim, self.model.y_dim, self.model.z_dim, self.model.c_dim)
+            volume = self.model.generate(latents_gen, inputs, splits, unnormalize_output=True)
             if volume.ndim == 5 and volume.shape[0] == 1:
                 volume = volume[0]
-            volume = volume.cpu().numpy()
-            if self.model.map_fn.final_activation == 'sigmoid':
-                volume = (volume * 255.).astype(np.uint8)
-            elif self.model.map_fn.final_activation == 'tanh':
-                volume = ((volume + 1.) * 127.5).astype(np.uint8)
-            else:
-                volume = (volume * 255).astype(np.uint8)
             if self.skip_blank_generations:
                 if np.abs(volume.max() - volume.min()) < 5:
                     self.logger.info('skipping blank output')

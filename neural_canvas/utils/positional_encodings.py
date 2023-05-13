@@ -44,7 +44,7 @@ def coordinates_3D(x_dim, y_dim, z_dim, batch_size, zoom, pan, scale, as_mat=Fal
     
     return x_vec, y_vec, z_vec, r_vec
 
-
+"""
 def mixture_2D(x_dim, y_dim, device):
     n_components = 3
     X, truth = make_blobs(
@@ -66,7 +66,7 @@ def mixture_2D(x_dim, y_dim, device):
     xy_mat = np.reshape(kernel(positions).T, xx.shape)
     xy_mat = torch.from_numpy(xy_mat).float().to(device)
     return xy_mat
-
+"""
 
 class FourierEncoding(nn.Module):
     # instatiate for all components of the input parameterizations

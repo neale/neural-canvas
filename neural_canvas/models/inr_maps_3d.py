@@ -86,14 +86,16 @@ class INRRandomGraph3D(nn.Module):
     def load_graph_str(self, s):
         return networkx.parse_graphml(s, node_type=int)
 
-    def forward(self, inputs, latents):
+    def forward(self, inputs, latents=None):
         x, y, z, r = inputs[0, 0, ...], inputs[0, 1, ...], inputs[0, 2, ...], inputs[0, 3, ...]
-        latents_ = self.acts_start[0](self.linear_latents(latents))
         z_ = self.acts_start[1](self.linear_z(z))
         r_ = self.acts_start[2](self.linear_r(r))
         y_ = self.acts_start[3](self.linear_y(y))
         x_ = self.acts_start[4](self.linear_x(x))
-        f = self.acts_start[5](z_ + x_ + y_ + r_ + latents_)
+        f = self.acts_start[5](z_ + x_ + y_ + r_)
+        if latents is not None:
+            latents_ = self.acts_start[0](self.linear_latents(latents))
+            f = f + latents_
         f = self.acts_start[6](self.linear1(f))
         res = self.scale(self.network(f))
         res = self.act_out(res)
@@ -172,14 +174,17 @@ class INRLinearMap3D(nn.Module):
 
         return g
     
-    def forward(self, inputs, latents):
+    def forward(self, inputs, latents=None):
         x, y, z, r = inputs[:, 0, ...], inputs[:, 1, ...], inputs[:, 2, ...], inputs[:, 3, ...]
         latents_pt = self.linear_latents(latents)
         x_pt = self.linear_x(x)
         y_pt = self.linear_y(y)
         r_pt = self.linear_r(r)
         z_pt = self.linear_z(z)
-        z = z_pt + x_pt + y_pt + r_pt + latents_pt
+        z = z_pt + x_pt + y_pt + r_pt
+        if latents is not None:
+            latents_pt = self.linear_latents(latents)
+            z = z + latents_pt
         z = self.acts[0](z)
         z = self.acts[1](self.linear1(z))
         z = self.acts[2](self.linear2(z))
@@ -240,10 +245,10 @@ class INRConvMap3D(nn.Module):
         acts = [randact(activation_set='large') for _ in range(8)]
         self.acts = nn.ModuleList(acts)    
     
-    def forward(self, inputs, latents):
+    def forward(self, inputs, latents=None):
         raise NotImplementedError
-        x = torch.cat([inputs, latents], 0).unsqueeze(0)
-        #x = torch.stack([x, y], 0).unsqueeze(0)
+        if latents is not None:
+            x = torch.cat([inputs, latents], 0).unsqueeze(0)
         x = self.acts[0](self.norms[0](self.conv1(x)))
         x = self.acts[1](self.norms[1](self.conv2(x)))
         x = self.acts[2](self.norms[2](self.conv3(x)))

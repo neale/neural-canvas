@@ -51,7 +51,11 @@ class INRFBase(ABC):
         pass
 
     @abstractmethod
-    def init_latent_inputs(self, z=None, batch_size=1, output_shape=None):
+    def construct_fields(self, **kwargs):
+        pass
+    
+    @abstractmethod
+    def sample_latents(self, **kwargs):
         pass
 
     @abstractmethod

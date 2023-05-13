@@ -90,13 +90,15 @@ class INRRandomGraph(nn.Module):
     def load_graph_str(self, s):
         return networkx.parse_graphml(s, node_type=int)
 
-    def forward(self, fields, latents):
+    def forward(self, fields, latents=None):
         x, y, r = fields[:, 0, ...], fields[:, 1, ...], fields[:, 2, ...]
-        latents_ = self.acts_start[0](self.linear_latents(latents))
         r_ = self.acts_start[1](self.linear_r(r))
         y_ = self.acts_start[2](self.linear_y(y))
         x_ = self.acts_start[3](self.linear_x(x))
-        f = self.acts_start[4](x_+ y_+ r_ + latents_)
+        f = self.acts_start[4](x_+ y_+ r_)
+        if latents is not None:
+            latents_ = self.acts_start[0](self.linear_latents(latents))
+            f = f + latents_
         f = self.acts_start[5](self.linear1(f))
         res = self.scale(self.network(f))
         res = self.act_out(res)
@@ -176,7 +178,7 @@ class INRLinearMap(nn.Module):
 
         return g
  
-    def forward(self, fields, latents):
+    def forward(self, fields, latents=None):
         #TODO refactor this to look better, its clunky to support positional encodings
         # field inputs should probably be a dict, since they have physical relevance
         if fields.ndim == 4: # after positional encoding
@@ -186,11 +188,13 @@ class INRLinearMap(nn.Module):
             r = fields[:, chunk_size*2:, :, 0].permute(0, 2, 1)
         else:
             x, y, r = fields[:, 0, ...], fields[:, 1, ...], fields[:, 2, ...]
-        latents_pt = self.linear_latents(latents)
         x_pt = self.linear_x(x)
         y_pt = self.linear_y(y)
         r_pt = self.linear_r(r)
-        z = latents_pt + x_pt + y_pt + r_pt
+        z = x_pt + y_pt + r_pt
+        if latents is not None:
+            latents_pt = self.linear_latents(latents)
+            z = z + latents_pt
         z = self.acts[0](z)
         z = self.acts[1](self.linear1(z))
         z = self.acts[2](self.linear2(z))
@@ -254,8 +258,9 @@ class INRConvMap(nn.Module):
         acts = [randact(activation_set='large') for _ in range(9)]
         self.acts = nn.ModuleList(acts)    
     
-    def forward(self, fields, latents):
-        x = torch.cat([fields, latents], 1)
+    def forward(self, fields, latents=None):
+        if latents is not None:
+            x = torch.cat([fields, latents], 1)
         x = self.acts[0](self.norms[0](self.conv1(x)))
         x = self.acts[1](self.norms[1](self.conv2(x)))
         x = self.acts[2](self.norms[2](self.conv3(x)))

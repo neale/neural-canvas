@@ -1,5 +1,4 @@
 import os
-import cv2
 import glob
 import shutil
 import logging
@@ -27,6 +26,7 @@ def lerp(z1, z2, n):
 
 
 def load_image_as_tensor(path, output_dir='/tmp', device='cpu'):
+    import cv2
     target = cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
     target = target / 127.5 - 1 
     target = torch.from_numpy(target).permute(2, 0, 1).unsqueeze(0).float().to(device)
@@ -46,6 +46,7 @@ def unnormalize_and_numpy(x, bounds=(-1, 1)):
     return x
 
 def write_image(path, img, suffix='jpg', metadata=None, colormaps=None):
+    import cv2
     assert suffix in ['jpg', 'png', 'bmp', 'jpeg', 'tif'], f'Invalid suffix for file, got {suffix}'
     if suffix in ['jpg', 'png', 'bmp', 'jpeg']:
         if colormaps is not None:
@@ -68,6 +69,7 @@ def write_image(path, img, suffix='jpg', metadata=None, colormaps=None):
 
 
 def image_colormaps(img, colormaps):
+    import cv2
     colormaps = {c.lower(): None for c in colormaps}
     if img.shape[-1] == 3:
         colormaps['rgb'] = img
@@ -107,7 +109,6 @@ def save_repository(search_dir, output_dir):
 
 
 def load_tif_metadata(path):
-
     assert os.path.isfile(path), f'{path} not found'
     try:
         with tifffile.TiffFile(path) as tif:
@@ -153,6 +154,7 @@ def load_tif_metadata(path):
 
 
 def draw_graph(num_nodes, random_graph, graph, c_dim=3, img=None):
+    import cv2
     graph.dpi = 1000
     options = {
         'label': '',
@@ -198,6 +200,7 @@ def draw_graph(num_nodes, random_graph, graph, c_dim=3, img=None):
 
 
 def write_video(frames, save_dir, save_name='video'):
+    import cv2
     fourcc = cv2.VideoWriter_fourcc(*'mp4v') 
     width = frames[0].shape[0]
     height = frames[0].shape[1]

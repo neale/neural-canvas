@@ -59,7 +59,6 @@ class INRF2D(INRFBase):
         self._init_random_seed(seed=seed)
         self._init_paths()
 
-        self.default_fields = None        
         self.init_map_fn(graph_topology=graph_topology)
 
     def _init_random_seed(self, seed=None):
@@ -128,16 +127,14 @@ class INRF2D(INRFBase):
     @property
     def data(self):
         # returns the data characterized by this INRF
-        latents, fields = self.init_latent_inputs()
-        data = self.map_fn(latents['sample'], fields)
+        fields = self.construct_fields()
+        data = self.map_fn(fields['coords'])
         return data
     
     @property
     def fields(self):
         # returns the fields characterized by this INRF
-        return {'x': self.default_fields[0, 0],
-                'y': self.default_fields[0, 1],
-                'r': self.default_fields[0, 2]}    
+        return self.construct_fields() 
     
     def init_map_weights(self):
         # initialize weights
@@ -225,86 +222,93 @@ class INRF2D(INRFBase):
 
         self.map_fn = map_fn.to(self.device)
         self.init_map_weights()
-        self.default_latents, self.default_fields = self.init_latent_inputs()
 
-
-    def init_latent_inputs(self,
-                           reuse_latents=None,
-                           batch_size=1,
-                           output_shape=None,
-                           zoom=(.5,.5),
-                           pan=(2,2)):
-        """
-        initializes latent inputs for the forward map
-        Args:
-            reuse_latents (dict): latent inputs if initialized previously, if provided then 
-                this will use the data of the previous inputs to initialize the new inputs
-            batch_size (int): batch size
-            output_shape (tuple(int), Optional): dimensions of forward map output. If not provided,
-                then the dimensions of the forward map output are assumed to be
-                `self.x_dim` and `self.y_dim`
-        Returns:
-            latents (dict): latent inputs
-            fields (torch.tensor) of size (B, N, H, W) that represents a Batch of N inputs
-        """
-        if batch_size is None:
-            batch_size = self.batch_size
+    def construct_fields(self,
+                         output_shape=None,
+                         zoom=(.5, .5),
+                         pan=(2, 2),
+                         coord_fn=None):
         if output_shape is not None:
-            assert len(output_shape) == 2 or len(output_shape) == 3, '' \
-                f'output_shape must be of length 2 or 3' \
-                f'got `{output_shape}`'
-            x_dim, y_dim = output_shape[:2]
-        else:
-            x_dim, y_dim = self.x_dim, self.y_dim
-
-        if reuse_latents is None or self.graph_topology == 'conv':
-            latents = {'base_shape':(x_dim, y_dim), 'sample_shape': (x_dim, y_dim)}
-            if self.graph_topology == 'conv':
-                sample = torch.ones(batch_size, self.latent_dim, x_dim, y_dim)
-                latents['sample'] = sample.uniform_(-2, 2)
-                latents['inputs'] = latents['sample'].clone()
+            assert len(output_shape) in [2, 3], 'output_shape must be 2D or 3D'
+            if len(output_shape) == 3:
+                batch_size = output_shape[0]
             else:
-                sample = torch.ones(batch_size, 1, self.latent_dim)
-                sample = sample.reshape(batch_size, 1, self.latent_dim)
-                sample = sample.uniform_(-2, 2)
-                one_vec = torch.ones(x_dim*y_dim, 1).float().to(self.device)
-                latents['sample'] = sample
-                latents['input'] = sample * one_vec * self.latent_scale
+                batch_size = 1
+            x_dim, y_dim = output_shape[-2], output_shape[-1]
         else:
-            assert isinstance(reuse_latents, dict), '`reuse_latents` must be a type `dict`' 
-            assert reuse_latents['sample'].shape == (batch_size, 1, self.latent_dim), '' \
-                f'reuse latent sample should be of shape (batch_size, 1, self.latent_dim), ' \
-                f'got latent shape `{reuse_latents["sample"].shape}`'
-            if (x_dim, y_dim) != (reuse_latents['base_shape']):
-                one_vec = torch.ones(x_dim*y_dim, 1).float().to(self.device)
-                latents['input'] = sample * one_vec * self.latent_scale
-                reuse_latents['sample_shape'] = (x_dim, y_dim)
-
-        latents['input'] = latents['input'].to(self.device)
-
-        if self.default_fields is None or self.default_fields.shape[-2:] != (x_dim, y_dim):
-            self.logger.debug('Detected missing or incompatible 2D fields, initializing ...')
-            fields = coordinates_2D(x_dim, 
+            batch_size = 1
+            x_dim, y_dim = self.x_dim, self.y_dim
+        assert len(zoom) == 2, f'zoom direction must be 2D, got `{zoom}`'
+        assert len(pan) == 2, f'pan direction must be 2D, got `{pan}`'
+        if coord_fn is not None:
+            coords = coord_fn(x_dim, y_dim, batch_size=batch_size)
+        else:
+            coords = coordinates_2D(x_dim, 
                                     y_dim,
                                     batch_size=batch_size,
                                     zoom=zoom,
                                     pan=pan,
                                     scale=self.latent_scale,
-                                    as_mat=True)#self.graph_topology=='conv_fixed')
-            fields = torch.stack(fields, 0).unsqueeze(0).repeat(batch_size, 1, 1, 1)
+                                    as_mat=True)
+            coords = torch.stack(coords, 0).unsqueeze(0).repeat(batch_size, 1, 1, 1)
+        fields = {'coords': coords,
+                  'shape': (batch_size, x_dim, y_dim),
+                  'zoom': zoom, 
+                  'pan': pan}
+        return fields
+    
+    def sample_latents(self, reuse_latents=None, output_shape=None):
+        """
+        initializes latent inputs for the forward map
+        Args:
+            reuse_latents (dict, Optional): dictionary of latent inputs to reuse
+            output_shape (tuple(int), Optional): dimensions of forward map output. If not provided,
+                then the dimensions of the forward map output are assumed to be
+                `self.x_dim` and `self.y_dim` with an optional batch dimension
+        Returns:
+            latents (dict): latent input information
+        """
+        if output_shape is not None:
+            assert len(output_shape) in [2, 3], 'output_shape must be 2D or 3D'
+            if len(output_shape) == 3:
+                batch_size = output_shape[0]
+            else:
+                batch_size = 1
+            x_dim, y_dim = output_shape[-2], output_shape[-1]
         else:
-            fields = self.default_fields
-        return latents, fields.to(self.device)
+            batch_size = 1
+            x_dim, y_dim = self.x_dim, self.y_dim
+
+        if reuse_latents is not None:
+            latents = reuse_latents
+        else:
+            latents = {'base_shape':(x_dim, y_dim), 'sample_shape': (x_dim, y_dim)}
+        if self.graph_topology == 'conv':  #
+            sample = torch.ones(batch_size, self.latent_dim, x_dim, y_dim)
+            latents['sample'] = sample.uniform_(-2, 2)
+            latents['inputs'] = latents['sample'].clone()
+        else:
+            if 'sample' not in latents.keys():
+                sample = torch.ones(batch_size, 1, self.latent_dim)
+                sample = sample.uniform_(-2, 2)
+                latents['sample'] = sample
+            one_vec = torch.ones(x_dim*y_dim, 1).float().to(self.device)
+            latents['input'] = torch.matmul(one_vec, latents['sample']) * self.latent_scale
+        latents['input'] = latents['input'].to(self.device)
+        return latents
 
     def generate(self,
                  latents=None,
                  fields=None,
                  output_shape=None,
-                 splits=1):
+                 splits=1,
+                 sample_latent=False,
+                 retain_graph=False,
+                 unnormalize_output=True):
         """
         samples from the forward map
         Args:
-            latents (dict): latent input information for the forward map
+            latents (dict, Optional): latent input information for the forward map
             fields (torch.tensor) of size (B, N, H, W) that represents a Batch of N inputs
                 that may represent X, Y, R, or any other input of shape (H, W) that matches
                 the desired output shape. 
@@ -312,40 +316,54 @@ class INRF2D(INRFBase):
                 then the dimensions of the forward map output are assumed to be
                 (`self.x_dim`, `self.y_dim`, self.z_dim`)
             splits (int): number of splits to use for sampling. Used to reduce memory usage
+            sample_latent (bool): whether to sample random latent inputs
+            retain_graph (bool): whether to retain the graph for backpropagation
+            unnormalize_output (bool): whether to unnormalize the output
         Returns:
             frame (torch tensor): sampled frame
         """
-        if output_shape is not None: # ignore passed in parameters
-            assert isinstance(output_shape, (tuple, list)), 'output_shape must be a tuple or list' \
-                f' got `{type(output_shape)}`'
-            latents, fields = self.init_latent_inputs(output_shape=output_shape)
-        if fields is not None:
-            assert isinstance(fields, torch.Tensor), 'fields must be a torch tensor' \
-                f' got  {type(fields)}`'
-        else:
-            fields = self.default_fields
+        if output_shape is None:
+            if fields is None:
+                fields = self.construct_fields()
+            if latents is None:
+                if sample_latent:
+                    latents = self.sample_latents(output_shape=fields['shape'])                
+
+        else: 
+            fields = self.construct_fields(output_shape=output_shape)
+            if latents is not None:
+                if fields['shape'] != latents.shape:
+                    latents = self.sample_latents(
+                        output_shape=output_shape, reuse_latents=latents)
+            if sample_latent:
+                latents = self.sample_latents(output_shape=output_shape)
+
+        batch_size = fields['shape'][0]
+        output_shape = fields['shape'] + (self.c_dim,)
+
         if latents is not None:
-            assert isinstance(latents, dict), 'latents must be a dict' \
-                f' got `{type(latents)}`'
+            latent = latents['input']
+            if 'mlp' in self.graph_topology or 'WS' in self.graph_topology: # flatten inputs
+                latent = latent.reshape(-1, self.latent_dim)
+            if splits > 1:
+                latent = torch.split(latent, latent.shape[0]//splits, dim=0)
         else:
-            latents = self.default_latents
+            latent = None
 
-        batch_size = fields.shape[0]
-        n_pts = np.prod(fields.shape[2:])
-        output_shape = latents['sample_shape'] + (self.c_dim,)
-
-        latent = latents['input']
-        if 'mlp' in self.graph_topology or 'WS' in self.graph_topology: # flatten inputs
-            latent = latent.reshape(-1, self.latent_dim)
-            fields = fields.reshape(batch_size, fields.shape[1], -1)
-            fields = fields.transpose(0, 2)
+        field = fields['coords']  # [B, NF, H, W]
+        if self.graph_topology in['mlp', 'WS']:
+            field = field.reshape(batch_size, field.shape[1], -1)
+            field = field.transpose(0, 2)
         if splits == 1:
-            frame = self.map_fn(fields, latent)
+            frame = self.map_fn(field, latent)
         elif splits > 1:
-            latent = torch.split(latent, latent.shape[0]//splits, dim=0)
-            fields = torch.split(fields, fields.shape[0]//splits, dim=0)
+            field = torch.split(field, field.shape[0]//splits, dim=0)
             for i in range(splits):
-                f = self.map_fn(fields[i], latent[i])
+                if latent is not None:
+                    l_i = latent[i]
+                else:
+                    l_i = None
+                f = self.map_fn(field[i], l_i)
                 torch.save(f, os.path.join(self.tmp_dir, self.output_dir, f'inrf2D_temp_gen{i}.pt'))
 
             frame = torch.load(os.path.join(self.tmp_dir, self.output_dir, f'inrf2D_temp_gen0.pt'))
@@ -360,7 +378,14 @@ class INRF2D(INRFBase):
                 os.remove(temp)
         else:
             raise ValueError(f'splits must be >= 1, got {splits}')
-        frame = frame.reshape(batch_size, *output_shape)
+        frame = frame.reshape(output_shape)
+        if unnormalize_output:
+            if self.map_fn.final_activation == 'tanh':
+                frame = (frame + 1.) * 127.5
+            else:
+                frame = frame * 255.
+        if not retain_graph:
+            frame = frame.detach().cpu().numpy().astype(np.uint8)
         self.logger.debug(f'Output Frame Shape: {frame.shape}')
         return frame
 
@@ -472,7 +497,6 @@ class INRF3D(INRFBase):
         self._init_random_seed(seed=seed)
         self._init_paths()
 
-        self.default_fields = None       
         self.init_map_fn(graph_topology=graph_topology)
 
     def _init_random_seed(self, seed=None):
@@ -542,16 +566,14 @@ class INRF3D(INRFBase):
     @property
     def data(self):
         # returns the data characterized by this INRF
-        data = self.map_fn(fields=self.default_fields, latents=self.init_latent_inputs())
+        fields = self.construct_fields()
+        data = self.map_fn(fields=fields['coords'])
         return data
     
     @property
     def fields(self):
         # returns the fields characterized by this INRF
-        return {'x': self.default_fields[0, 0],
-                'y': self.default_fields[0, 1],
-                'z': self.default_fields[0, 2],
-                'r': self.default_fields[0, 3]}
+        return self.construct_fields()
     
     def init_map_weights(self):
         # initialize weights
@@ -634,65 +656,23 @@ class INRF3D(INRFBase):
 
         self.map_fn = map_fn.to(self.device)
         self.init_map_weights()
-        self.default_latents, self.default_fields = self.init_latent_inputs()
 
-    def init_latent_inputs(self,
-                           reuse_latents=None,
-                           split_latents=False,
-                           batch_size=1,
-                           output_shape=None,
-                           zoom=(.5,.5,.5),
-                           pan=(2,2,2)):
-        """
-        initializes latent inputs for the forward map
-        Args:
-            reuse_latents (dict): latent inputs if initialized previously, if provided then 
-                this will use the data of the previous inputs to initialize the new inputs
-            batch_size (int): batch size
-            output_shape (tuple(int), Optional): dimensions of forward map output. If not provided,
-                then the dimensions of the forward map output are assumed to be
-                `self.x_dim` and `self.y_dim`
-        Returns:
-            latents (dict): latent inputs
-            fields (torch.tensor) of size (B, N, H, W) that represents a Batch of N inputs
-        """
-        if batch_size is None:
-            batch_size = self.batch_size
-        if output_shape is not None:
-            assert len(output_shape) == 3 or len(output_shape) == 4, '' \
-                f'output_shape must be of length 3 or 4' \
-                f'got `{output_shape}`'
-            x_dim, y_dim, z_dim = output_shape[:3]
+    def construct_fields(self,
+                         output_shape=None,
+                         zoom=(.5, .5, .5),
+                         pan=(2, 2, 2),
+                         coord_fn=None):
+        assert len(output_shape) in [3, 4], f'output_shape must be 2D or 3D, got `{output_shape}`'
+        if len(output_shape) == 4:
+            batch_size = output_shape[0]
         else:
-            x_dim, y_dim, z_dim = self.x_dim, self.y_dim, self.z_dim
-
-        if reuse_latents is None or self.graph_topology == 'conv':
-            latents = {'base_shape':(x_dim, y_dim, z_dim), 'sample_shape': (x_dim, y_dim, z_dim)}
-            if self.graph_topology == 'conv':
-                sample = torch.ones(batch_size, self.latent_dim, x_dim, y_dim, z_dim)
-                latents['sample'] = sample.uniform_(-2, 2)
-                latents['inputs'] = latents['sample'].clone().to(self.device)
-            else:
-                sample = torch.ones(batch_size, 1, self.latent_dim)
-                sample = sample.reshape(batch_size, 1, self.latent_dim)
-                sample = sample.uniform_(-2, 2)
-                latents['sample'] = sample
-                if not split_latents:  # do this downstream to avoid OOM
-                    one_vec = torch.ones(x_dim*y_dim*z_dim, 1).float().to(self.device)
-                    latents['input'] = (sample * one_vec * self.latent_scale).to(self.device)
-
+            batch_size = 1
+        x_dim, y_dim, z_dim = output_shape[-3], output_shape[-2], output_shape[-1]
+        assert len(zoom) == 3, f'zoom direction must be 3D, got `{zoom}`'
+        assert len(pan) == 3, f'pan direction must be 3D, got `{pan}`'
+        if coord_fn is not None:
+            coords = coord_fn(x_dim, y_dim, z_dim, batch_size=batch_size)
         else:
-            assert isinstance(reuse_latents, dict), '`reuse_latents` must be a type `dict`' 
-            assert reuse_latents['sample'].shape == (batch_size, 1, self.latent_dim), '' \
-                f'reuse latent sample should be of shape (batch_size, 1, self.latent_dim), ' \
-                f'got latent shape `{reuse_latents["sample"].shape}`'
-            if (x_dim, y_dim) != (reuse_latents['base_shape']) and not split_latents:
-                one_vec = torch.ones(x_dim*y_dim*z_dim, 1).float().to(self.device)
-                latents['input'] = (sample * one_vec * self.latent_scale).to(self.device)
-                reuse_latents['sample_shape'] = (x_dim, y_dim, z_dim)
-
-        if self.default_fields is None or self.default_fields.shape[-3:] != (x_dim, y_dim, z_dim):
-            self.logger.debug('Detected missing or incompatible 3D fields, initializing ...')
             fields = coordinates_3D(x_dim, 
                                     y_dim,
                                     z_dim,
@@ -701,16 +681,63 @@ class INRF3D(INRFBase):
                                     pan=pan,
                                     scale=self.latent_scale,
                                     as_mat=True)
-            fields = torch.stack(fields, 0).unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
+            coords = torch.stack(fields, 0).unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
+        fields = {'coords': coords, 
+                  'shape': (batch_size, x_dim, y_dim, z_dim),
+                  'zoom': zoom,
+                  'pan': pan}
+        return fields
+    
+    def sample_latents(self, reuse_latents=None, output_shape=None):
+        """
+        initializes latent inputs for the forward map
+        Args:
+            reuse_latents (dict): latent inputs if initialized previously, if provided then 
+                this will use the data of the previous inputs to initialize the new inputs
+            output_shape (tuple(int), Optional): dimensions of forward map output. If not provided,
+                then the dimensions of the forward map output are assumed to be
+                `self.x_dim` and `self.y_dim`
+        Returns:
+            latents (dict): latent input information
+        """
+        if output_shape is not None:
+            assert len(output_shape) in [3, 4], 'output_shape must be 3D or 4D'
+            if len(output_shape) == 4:
+                batch_size = output_shape[0]
+            else:
+                1
+            x_dim, y_dim, z_dim = output_shape[-3], output_shape[-2], output_shape[-1]
         else:
-            fields = self.default_fields
-        return latents, fields.to(self.device)
+            batch_size = self.batch_size
+            x_dim, y_dim, z_dim = self.x_dim, self.y_dim, self.z_dim
+
+        if reuse_latents is not None:
+            latents = reuse_latents
+        else:
+            latents = {'base_shape':(x_dim, y_dim, z_dim),
+                       'sample_shape': (x_dim, y_dim, z_dim)}
+        if self.graph_topology == 'conv':  #
+            sample = torch.ones(batch_size, self.latent_dim, x_dim, y_dim, z_dim)
+            latents['sample'] = sample.uniform_(-2, 2)
+            latents['inputs'] = latents['sample'].clone()
+        else:
+            if 'sample' not in latents.keys():
+                sample = torch.ones(batch_size, 1, self.latent_dim)
+                sample = sample.uniform_(-2, 2)
+                latents['sample'] = sample
+            one_vec = torch.ones(x_dim*y_dim*z_dim, 1).float().to(self.device)
+            latents['input'] = torch.matmul(one_vec, sample) * self.latent_scale
+        latents['input'] = latents['input'].to(self.device)
+        return latents
     
     def generate(self,
                  latents=None,
                  fields=None,
                  output_shape=None,
-                 splits=1):
+                 splits=1,
+                 sample_latent=False,
+                 retain_graph=False,
+                 unnormalize_output=True):
         """
         samples from the forward map
         Args:
@@ -722,47 +749,58 @@ class INRF3D(INRFBase):
                 then the dimensions of the forward map output are assumed to be
                 (`self.x_dim`, `self.y_dim`, self.z_dim`)
             splits (int): number of splits to use for sampling. Used to reduce memory usage
+            sample_latent (bool): whether to sample random latent inputs
+            retain_graph (bool): whether to retain the graph for backpropagation
+            unnormalize_output (bool): whether to unnormalize the output
         Returns:
             volume (torch tensor): sampled volume
         """
-        if output_shape is not None: # ignore passed in parameters
-            assert isinstance(output_shape, (tuple, list)), 'output_shape must be a tuple or list' \
-                f' got `{type(output_shape)}`'
-            latents, fields = self.init_latent_inputs(
-                output_shape=output_shape, split_latents=(splits > 1))
-        if fields is not None:
-            assert isinstance(fields, torch.Tensor), 'fields must be a torch tensor' \
-                f' got `{type(fields)}`'
-        else:
-            fields = self.default_fields
+        if output_shape is None:
+            if fields is None:
+                fields = self.construct_fields()
+            if latents is None:
+                latents = self.sample_latents(output_shape=fields['shape'])
+
+        else: 
+            fields = self.construct_fields(output_shape=output_shape)
+            if latents is not None:
+                if fields['shape'] != latents.shape:
+                    latents = self.sample_latents(
+                        output_shape=output_shape, reuse_latents=latents)
+            if sample_latent:
+                latents = self.sample_latents(output_shape=output_shape)
+
+        batch_size = fields['shape'][0]
+        n_pts = np.prod(fields['shape'][2:])
+        output_shape = fields['sample_shape'] + (self.c_dim,)
+
         if latents is not None:
-            assert isinstance(latents, dict), 'latents must be a dict' \
-                f' got `{type(latents)}`'
+            if splits > 1:
+                latent = latents['sample'].view(batch_size, 1, self.latent_dim)
+            else:
+                latent = latents['input']
+                if 'mlp' in self.graph_topology or 'WS' in self.graph_topology: # flatten inputs
+                    latent = latent.reshape(-1, self.latent_dim)
         else:
-            latents = self.default_latents
+            latent = None
 
-        batch_size = fields.shape[0]
-        n_pts = np.prod(fields.shape[2:])
-        output_shape = latents['sample_shape'] + (self.c_dim,)
-
+        field = fields['coords']
         if splits == 1:
-            latent = latents['input']
-            if 'mlp' in self.graph_topology or 'WS' in self.graph_topology:
-                latent = latent.reshape(-1, self.latent_dim)
-                fields = fields.reshape(batch_size, fields.shape[1], -1)
-                fields = fields.transpose(0, 2)
+            if self.graph_topology in ['mlp', 'WS']:
+                field = field.reshape(batch_size, field.shape[1], -1)
+                field = field.transpose(0, 2)
             volume = self.map_fn(fields, latent)
         elif splits > 1:
             assert n_pts % splits == 0, 'number of splits must be divisible by number of points'
-            latent = latents['sample'].view(batch_size, 1, self.latent_dim)
             one_vec = torch.ones(n_pts, 1, dtype=torch.float).to(self.device)
             fields = torch.split(fields, fields.shape[2]//splits, dim=2)
 
             for i, field in enumerate(fields):
                 field = field.reshape(batch_size*(n_pts//splits), field.shape[1], 1)
                 one_vec = torch.ones(n_pts//splits, 1, dtype=torch.float).to(self.device)
-                latent_one_vec_i = latent * one_vec * self.latent_scale
-                latent_scale_i = latent_one_vec_i.view(batch_size*(n_pts//splits), self.latent_dim)
+                if latent is not None:
+                    latent_one_vec_i = latent * one_vec * self.latent_scale
+                    latent_scale_i = latent_one_vec_i.view(batch_size*(n_pts//splits), self.latent_dim)
                 # forward split through map_fn
                 f = self.map_fn(field, latent_scale_i)
                 torch.save(f, os.path.join(self.tmp_dir, self.output_dir, f'inrf3D_temp_gen{i}.pt'))
@@ -778,7 +816,14 @@ class INRF3D(INRFBase):
                 os.remove(temp)
         else:
             raise ValueError(f'splits must be >= 1, got {splits}')
-        volume = volume.reshape(batch_size, *output_shape)
+        volume = volume.reshape(output_shape)
+        if unnormalize_output:
+            if self.map_fn.final_activation == 'tanh':
+                volume = (volume + 1.) * 127.5
+            else:
+                volume = volume * 255.
+        if not retain_graph:
+            volume = volume.detach().cpu().numpy().astype(np.uint8)
         self.logger.debug(f'Output Frame Shape: {volume.shape}')
         return volume
 

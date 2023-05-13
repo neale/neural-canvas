@@ -100,19 +100,9 @@ class RunnerINRF2D:
             latents_gen, fields = self.model.init_latent_inputs(reuse_latents=latents,
                                                                 zoom=zoom,
                                                                 pan=pan) 
-            frame = self.model.generate(latents_gen, fields, splits)
-
-            frame = frame.reshape(-1, self.model.x_dim, self.model.y_dim, self.model.c_dim)
+            frame = self.model.generate(latents_gen, fields, splits, unnormalize_output=True)
             if frame.ndim == 4 and frame.shape[0] == 1:
-                frame = frame[0]
-            frame = frame.cpu().numpy()
-            if self.model.map_fn.final_activation == 'sigmoid':
-                frame = (frame * 255.).astype(np.uint8)
-            elif self.model.map_fn.final_activation == 'tanh':
-                frame = ((frame + 1.) * 127.5).astype(np.uint8)
-            else:
-                frame = (frame * 255).astype(np.uint8)
-            
+                frame = frame[0]     
             if self.skip_blank_generations:
                 if np.abs(frame.max() - frame.min()) < 15:
                     self.logger.info('skipping blank output')

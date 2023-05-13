@@ -27,33 +27,42 @@ We can instantiate a 2D INRF with random parameters, by default the architecture
 </div>
 
 ```python
+import matplotlib.pyplot as plt
+import numpy as np
 from neural_canvas.models.inrf import INRF2D
 
 # Create a 2D implicit neural representation model
 model = INRF2D()
 # Generate the image given by the random INRF
 size = (256, 256)
-model.generate(output_shape=size)
+img = model.generate(output_shape=size)
+#perturb the image by generating a random vector as an additional input
+img2 = model.generate(output_shape=size, sample_latent=True)
 ```
-Importantly, the instantiated INRF is a neural representation of the output image, meaning that we can do things like modify the image size just by passing in a larger coordinate set. We will also do this by explicitly generating the input fields with `init_latent_inputs`. The returned `meta_latents` can be used for saving and reloading model settings.
+Importantly, the instantiated INRF is a neural representation of the output image, meaning that we can do things like modify the image size just by passing in a larger coordinate set. `.generate()` internally creates a `field` and optional `latent` input, but we can do this explicitly to control the output.
 
 ```python
-from neural_canvas import utils 
-import matplotlib.pyplot as plt
+size = (256, 256)
+latents = model.sample_latents(output_shape=size)  # random vector
+fields = model.construct_fields(output_shape=size)  # XY coordinate inputs
+img = model.generate(latents, fields)
 
+# Use the same latents and fields as a base to generate a larger version
 size = (1024, 1024)
-latents, fields = model.init_latent_inputs(output_shape=size)
-
-model.generate(output_shape=size)
-
+latents_lrg = model.sample_latents(output_shape=size, reuse_latents=latents)
+fields_lrg = model.construct_fields(output_shape=size)
+img_lrg = model.generate(latents_lrg, fields_lrg)
 ```
+<div align="center">
+<img src="https://raw.githubusercontent.com/neale/neural-canvas/main/neural_canvas/assets/rerendered_img.png" alt="rerendered"></img>
+</div>
 Re-rendering at a higher resolution actually _adds_ detail, in contrast to traditional interpolation, we can use this fact to zoom in on our image. This requires a little more manipulation of the inputs to the `generate` function, specifically by changing the coordinates (fields) we use for generation, we're able to `pan` and `zoom` 
 ```python
 zoom_xy = (10, 10) # xy zoom range is (0, inf)
 pan_xy = (5, -5) # pan range is (-inf inf)
 
-_, fields, _ = model.init_latent_inputs(reuse_latents=meta_latents, zoom=zoom_xy, pan=pan_xy)
-model.generate(size=size, zoom=zoom_xy, pan=pan_xy)
+latents, fields = model.init_latent_inputs(reuse_latents=latents, zoom=zoom_xy, pan=pan_xy)
+img = model.generate(output_shape=size, latents=latents, fields=fields)
 ```
 One caveat is that this simple `.generate(shape)` interface is simplistic, so we can't use this pattern to get fine-grained control over what is generated. To get fine grained control see `examples/generate_image.py`. 
 
@@ -93,7 +102,7 @@ Furthermore, the neural representation is flexible, and can be used to extend th
 
 For example, we can instantiate the following function to fit an image
 
-```python3
+```python
 from neural_canvas.models import INRF2D
 from neural_canvas.utils import load_image_as_tensor
 import numpy as np
@@ -161,7 +170,7 @@ size = (256, 256, 256)
 vol = model.generate(output_shape=size)
 rgb = utils.unnormalize_and_numpy(vol, bounds=(0, 1)).reshape(-1, 3)
 rgba = np.concatenate((rgb, np.ones((rgb.shape[0], 1), dtype=np.uint8)), 1)
-
+# plot with pyvista
 grid = pv.UniformGrid(dimensions=size)
 p = pv.Plotter(notebook=False)
 p.add_volume(grid, scalars=rgba)
