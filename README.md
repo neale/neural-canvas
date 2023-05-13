@@ -34,6 +34,10 @@ We can instantiate a 2D INRF with random parameters, by default the architecture
 <img src="https://raw.githubusercontent.com/neale/neural-canvas/main/neural_canvas/assets/img_2d_gen.png" alt="gen_img"></img>
 </div>
 
+
+The following code can all be run from `tests/test_readme.py`.
+
+
 ```python
 import matplotlib.pyplot as plt
 import numpy as np
@@ -69,11 +73,12 @@ img_lrg = model.generate(latents_lrg, fields_lrg)
 Re-rendering at a higher resolution actually _adds_ detail, in contrast to traditional interpolation, we can use this fact to zoom in on our image. This requires a little more manipulation of the inputs to the `generate` function, specifically by changing the coordinates (fields) we use for generation, we're able to `pan` and `zoom` 
 
 ```python
-zoom_xy = (10, 10) # xy zoom range is (0, inf)
-pan_xy = (5, -5) # pan range is (-inf inf)
+zoom_xy = (.25, .25) # zoom out -- xy zoom range is (0, inf)
+pan_xy = (3, 3) # pan range is (-inf inf)
 
-latents, fields = model.init_latent_inputs(reuse_latents=latents, zoom=zoom_xy, pan=pan_xy)
-img = model.generate(output_shape=size, latents=latents, fields=fields)
+# reuse the same random vector, but change the fields to zoom and pan
+fields_zoom_pan = model.construct_fields(output_shape=size, zoom=zoom_xy, pan=pan_xy)
+img = model.generate(output_shape=size, latents=latents_lrg, fields=fields_zoom_pan)
 ```
 
 One caveat is that this simple `.generate(shape)` interface is simplistic, so we can't use this pattern to get fine-grained control over what is generated. To get fine grained control see `examples/generate_image.py`. 
