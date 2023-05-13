@@ -16,6 +16,14 @@ Examples of implicit neural representations include NERFs ([Neural Radiance Fiel
 
 Implicit neural representation functions (INRFs) have a variety of uses, from data compression, to artistic generation. In pratice, INRF's a usually take some structural information, like (x, y) coordinates, and are optimized to fit a single example e.g. NERFs just learn to represent a single scene. Alternatively, random generation is interesting artistically, as 2D and 3D INRFs can be used to produce some really interesting looking artwork. 
 
+## Installation
+
+Just clone and pip install
+
+`git clone https://github.com/neale/neural-canvas`
+
+`pip install .`
+
 Lets start with the most basic example
 
 ## Image generation with 2D INRFs
@@ -68,20 +76,20 @@ One caveat is that this simple `.generate(shape)` interface is simplistic, so we
 
 From this its clear that a random INRF is just an embedding of the INRF function into the input coordinate frame. We can change that function by using any of the 3 supported architectures
 
-* MLP with random or specified nonlinearities
-* 1x1 Convolutional stack with random or specified nonlinearities, and optional norms
-* Random Watts-Strogatz graph with random activations 
+* MLP with random or specified nonlinearities: `mlp`
+* 1x1 Convolutional stack with random or specified nonlinearities, and optional norms: `conv`
+* Random Watts-Strogatz graph with random activations: `WS`
 
 Choose a different architecture quickly, or with more control
 ```python
-model = INRF2D(graph_topology='ws') # init Watts-Strogatz graph
+model = INRF2D(graph_topology='WS') # init Watts-Strogatz graph
 # is equivalent to 
 model.init_map_fn(mlp_layer_width=32,
                   activations='random',
                   final_activation=None,
                   weight_init='normal',
-                  num_graph_nodes=20,
-                  graph_topology='ws',
+                  num_graph_nodes=10,
+                  graph_topology='WS',
                   weight_init_mean=0,
                   weight_init_std=3,)
 
