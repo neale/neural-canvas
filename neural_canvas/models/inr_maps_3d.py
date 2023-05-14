@@ -86,8 +86,8 @@ class INRRandomGraph3D(nn.Module):
     def load_graph_str(self, s):
         return networkx.parse_graphml(s, node_type=int)
 
-    def forward(self, inputs, latents=None):
-        x, y, z, r = inputs[0, 0, ...], inputs[0, 1, ...], inputs[0, 2, ...], inputs[0, 3, ...]
+    def forward(self, fields, latents=None):
+        x, y, z, r = fields[:, 0, ...], fields[:, 1, ...], fields[:, 2, ...], fields[:, 3, ...]
         z_ = self.acts_start[1](self.linear_z(z))
         r_ = self.acts_start[2](self.linear_r(r))
         y_ = self.acts_start[3](self.linear_y(y))
@@ -176,7 +176,6 @@ class INRLinearMap3D(nn.Module):
     
     def forward(self, inputs, latents=None):
         x, y, z, r = inputs[:, 0, ...], inputs[:, 1, ...], inputs[:, 2, ...], inputs[:, 3, ...]
-        latents_pt = self.linear_latents(latents)
         x_pt = self.linear_x(x)
         y_pt = self.linear_y(y)
         r_pt = self.linear_r(r)

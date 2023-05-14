@@ -3,8 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from neural_canvas.models.inrf import INRF2D
 
-np.random.seed(0)
-torch.manual_seed(0)
+np.random.seed(42)
+torch.manual_seed(42)
 
 # Create a 2D implicit neural representation model
 model = INRF2D()
@@ -65,7 +65,7 @@ model.init_map_fn(mlp_layer_width=32,
 model.init_map_weights()  # resample weights to get different outputs
 img_ws = model.generate(output_shape=(256,256), sample_latent=True)
 
-model = INRF2D(graph_topology='conv', latent_dim=0)
+model = INRF2D(latent_dim=0)  # also try conv architecture
 model.init_map_fn(conv_feature_map_size=64,
                   activations='random',
                   final_activation='tanh',
@@ -75,7 +75,6 @@ model.init_map_fn(conv_feature_map_size=64,
                   weight_init_mean=0,
                   weight_init_std=3,)
 
-print (model.map_fn, model)
 img_conv = model.generate(output_shape=(256,256), sample_latent=False)
 
 fig, axes = plt.subplots(1, 2)
@@ -89,7 +88,6 @@ plt.show()
 from neural_canvas.utils import load_image_as_tensor
 
 img = load_image_as_tensor('neural_canvas/assets/logo.jpg')[0]
-print (img.shape)
 model = INRF2D(device='cpu') # or 'cuda'
 model.init_map_fn(activations='GELU',
                   weight_init='dip', 
@@ -118,3 +116,45 @@ axes[1].imshow(img_super_res.squeeze())
 axes[0].set_title('image fit 256x256')
 axes[1].set_title('image fit 1024x1024')
 plt.show()
+
+##
+##
+
+from neural_canvas.models.inrf import INRF3D
+
+# Create a 2D implicit neural representation model
+model = INRF3D()
+# Generate the image given by the random INRF
+size = (256, 256, 256)
+vol = model.generate(output_shape=size)
+print ('volume size', vol.shape)
+# We can do all the same transformations as with 2D INRFs
+# Warning: 3D generation consumes large amounts of memory. With 64GB of RAM, 1500**3 is the max size
+# `splits` generates the volume in parts to consume less memory
+size = (512, 512, 512)
+model = INRF3D(graph_topology='WS')
+latents = model.sample_latents(output_shape=size)
+fields = model.construct_fields(output_shape=size)
+vol = model.generate(output_shape=size,
+                     latents=latents,
+                     fields=fields, 
+                     splits=32)
+print ('volume size', vol.shape)
+
+##
+##
+
+import pyvista as pv
+import numpy as np
+
+model = INRF3D(graph_topology='WS')
+size = (256, 256, 256)
+rgb = model.generate(output_shape=size, splits=4)[0]
+rgb = rgb.reshape(-1, 3)
+print ('volume size', rgb.shape)
+rgba = np.concatenate((rgb, np.ones((rgb.shape[0], 1), dtype=np.uint8)), 1)
+# plot with pyvista
+grid = pv.UniformGrid(dimensions=size)
+p = pv.Plotter(notebook=False)
+p.add_volume(grid, scalars=rgba)
+p.show()

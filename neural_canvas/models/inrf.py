@@ -707,10 +707,10 @@ class INRF3D(INRFBase):
             if len(output_shape) == 4:
                 batch_size = output_shape[0]
             else:
-                1
+                batch_size = 1
             x_dim, y_dim, z_dim = output_shape[-3], output_shape[-2], output_shape[-1]
         else:
-            batch_size = self.batch_size
+            batch_size = 1
             x_dim, y_dim, z_dim = self.x_dim, self.y_dim, self.z_dim
 
         if reuse_latents is not None:
@@ -727,8 +727,8 @@ class INRF3D(INRFBase):
                 sample = torch.ones(batch_size, 1, self.latent_dim)
                 sample = sample.uniform_(-2, 2)
                 latents['sample'] = sample
-            one_vec = torch.ones(x_dim*y_dim*z_dim, 1).float().to(self.device)
-            latents['input'] = torch.matmul(one_vec, sample) * self.latent_scale
+                latents['input'] = sample.clone()
+
         latents['input'] = latents['input'].to(self.device)
         return latents
     
@@ -764,46 +764,45 @@ class INRF3D(INRFBase):
         else: 
             fields = self.construct_fields(output_shape=output_shape)
             if latents is not None:
-                if fields['shape'] != latents.shape:
+                if fields['shape'] != latents['sample_shape']:
                     latents = self.sample_latents(
                         output_shape=output_shape, reuse_latents=latents)
             if sample_latent:
                 latents = self.sample_latents(output_shape=output_shape)
 
         batch_size = fields['shape'][0]
-        n_pts = np.prod(fields['shape'][2:])
-        output_shape = fields['sample_shape'] + (self.c_dim,)
+        n_pts = np.prod(fields['shape'][1:])
+        output_shape = fields['shape'] + (self.c_dim,)
 
         if latents is not None:
-            if splits > 1:
-                latent = latents['sample'].view(batch_size, 1, self.latent_dim)
-            else:
+            if splits == 1:
                 latent = latents['input']
-                if 'mlp' in self.graph_topology or 'WS' in self.graph_topology: # flatten inputs
-                    latent = latent.reshape(-1, self.latent_dim)
+                one_vec = torch.ones(*fields['shape'], 1).float().to(self.device)
+                latent = torch.matmul(one_vec, latent) * self.latent_scale
+            latent = latents['input'].view(batch_size, 1, self.latent_dim)
         else:
             latent = None
 
-        field = fields['coords']
+        fields = fields['coords']
         if splits == 1:
             if self.graph_topology in ['mlp', 'WS']:
-                field = field.reshape(batch_size, field.shape[1], -1)
-                field = field.transpose(0, 2)
+                fields = fields.reshape(batch_size, fields.shape[1], -1)
+                fields = fields.transpose(0, 2)
             volume = self.map_fn(fields, latent)
         elif splits > 1:
             assert n_pts % splits == 0, 'number of splits must be divisible by number of points'
-            one_vec = torch.ones(n_pts, 1, dtype=torch.float).to(self.device)
             fields = torch.split(fields, fields.shape[2]//splits, dim=2)
-
-            for i, field in enumerate(fields):
-                field = field.reshape(batch_size*(n_pts//splits), field.shape[1], 1)
+            for i, field_i in enumerate(fields):
+                field_i = field_i.reshape(batch_size*(n_pts//splits), field_i.shape[1], 1)
                 one_vec = torch.ones(n_pts//splits, 1, dtype=torch.float).to(self.device)
                 if latent is not None:
                     latent_one_vec_i = latent * one_vec * self.latent_scale
                     latent_scale_i = latent_one_vec_i.view(batch_size*(n_pts//splits), self.latent_dim)
+                else:
+                    latent_scale_i = None
                 # forward split through map_fn
-                f = self.map_fn(field, latent_scale_i)
-                torch.save(f, os.path.join(self.tmp_dir, self.output_dir, f'inrf3D_temp_gen{i}.pt'))
+                volume = self.map_fn(field_i, latent_scale_i)
+                torch.save(volume, os.path.join(self.tmp_dir, self.output_dir, f'inrf3D_temp_gen{i}.pt'))
             volume = torch.load(os.path.join(self.tmp_dir, self.output_dir, f'inrf3D_temp_gen0.pt'))
             for j in range(1, splits):
                 volume = torch.cat(
