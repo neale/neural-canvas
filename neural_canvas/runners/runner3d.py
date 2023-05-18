@@ -16,8 +16,8 @@ from neural_canvas.models.inrf import INRF3D
 
 class RunnerINRF3D:
     def __init__(self, 
-                 model,
-                 output_dir,
+                 model=None,
+                 output_dir='',
                  save_verbose=False,
                  skip_blank_generations=True,
                  colormaps=None):
@@ -34,7 +34,8 @@ class RunnerINRF3D:
             colormaps: (list, optional) list of colormaps to use for generation
 
         """
-        assert isinstance(model, INRF3D)
+        if model:
+            assert isinstance(model, INRF3D)
         self.model = model
         if save_verbose:
             self.save_prefix = f'z-{model.latent_dim}_scale-{model.latent_scale}-{model.seed}'
@@ -58,12 +59,12 @@ class RunnerINRF3D:
     
     @torch.no_grad()
     def run_volumes(self,
-                   latents=None,
-                   num_samples=1,
-                   zoom_schedule=None,
-                   pan_schedule=None,
-                   splits=1, 
-                   autosave=True):
+                    latents=None,
+                    num_samples=1,
+                    zoom_schedule=None,
+                    pan_schedule=None,
+                    splits=1, 
+                    autosave=True):
         """
         Generate volumes from a trained model
         Args:
@@ -86,6 +87,7 @@ class RunnerINRF3D:
         assert self.model, 'Must provide a model to generate from, self.model is None'
         volumes = []
         metadata = []
+        paths = []
         randID = torch.randint(0, 99999999, size=(1,)).item()
         self.logger.info(f'Generating {num_samples} volumes using {splits} splits')
         for i in tqdm.tqdm(range(num_samples)):
@@ -97,17 +99,17 @@ class RunnerINRF3D:
                 pan = pan_schedule[i]
             else:
                 pan = (2, 2, 2)
-            latents_gen, inputs = self.model.init_latent_inputs(latents=latents,
-                                                                zoom=zoom,
-                                                                pan=pan) 
-            volume = self.model.generate(latents_gen, inputs, splits, unnormalize_output=True)
+            output_shape = (self.model.x_dim, self.model.y_dim, self.model.z_dim)
+            latents = self.model.sample_latents(reuse_latents=latents, output_shape=output_shape)
+            fields = self.model.construct_fields(output_shape=output_shape, zoom=zoom, pan=pan) 
+            volume = self.model.generate(latents, fields, splits=splits)          
             if volume.ndim == 5 and volume.shape[0] == 1:
                 volume = volume[0]
             if self.skip_blank_generations:
-                if np.abs(volume.max() - volume.min()) < 5:
+                if np.abs(volume.max() - volume.min()) < 20:
                     self.logger.info('skipping blank output')
                     continue
-            metadata.append(self.model._metadata(latents_gen))
+            metadata.append(self.model._metadata(latents))
             if autosave:
                 save_fn = os.path.join(self.output_dir, f'{self.save_prefix}_{randID}_{i}')
                 if self.save_verbose:
@@ -117,9 +119,10 @@ class RunnerINRF3D:
                 utils.write_image(path=save_fn+'_top_view',   img=volume[:, :, 0, :], suffix='jpg')
                 utils.write_image(path=save_fn, img=volume, suffix='tif', metadata=metadata[-1])
             volumes.append(volume)
-        return volumes, metadata
+            paths.append(save_fn)
+        return volumes, metadata, paths
     
-    def reinit_model_from_metadata(self, path, output_shape):
+    def reinit_model_from_metadata(self, output_shape, path=None, metadata=None):
         """
         Reinitialize a model from a metadata file
 
@@ -129,7 +132,8 @@ class RunnerINRF3D:
         Returns:
             latents: (dict) latent vector information used for generation    
         """
-        metadata = utils.load_tif_metadata(path)
+        if metadata is None:
+            _, metadata = utils.load_tif_metadata(path)
         assert len(output_shape) == 4, f'Invalid output shape: `{output_shape}`, need ndim=4'
         model = INRF3D(output_shape=output_shape,
                        output_dir=self.output_dir,
@@ -138,7 +142,7 @@ class RunnerINRF3D:
                        seed=metadata['seed'])
         model.init_map_fn(mlp_layer_width=metadata['mlp_layer_width'],
                           conv_feature_map_size=metadata['conv_feature_map_size'],
-                          input_encoding_dim=metadata['input_encoding_dim'],
+                          #input_encoding_dim=metadata['input_encoding_dim'],
                           activations=metadata['activations'],
                           final_activation=metadata['final_activation'],
                           weight_init=metadata['weight_init'],
@@ -150,7 +154,14 @@ class RunnerINRF3D:
                           num_graph_nodes=metadata['num_graph_nodes'],
                           graph=metadata['graph'],)
         self.model = model
-        return metadata['latents']
+        loaded_latents = {'sample': metadata['latents'], 
+                          'base_shape': (metadata['x_dim'], 
+                                         metadata['y_dim'], 
+                                         metadata['z_dim']),
+                          'sample_shape': (metadata['x_dim'],
+                                           metadata['y_dim'],
+                                           metadata['z_dim'])}
+        return loaded_latents
 
     def regen_volumes(self,
                       path,
@@ -189,18 +200,28 @@ class RunnerINRF3D:
         for path in image_paths:
             basename = os.path.basename(path)
             save_fn = os.path.join(self.output_dir, f'{basename[:-4]}_reproduce')
+            if os.path.exists(save_fn+'_top_view_0.jpg'):
+                self.logger.info(f'Found existing output at: {save_fn}')
+                continue
+            else:
+                print ('Running reproduction for: ', path, 'saving at: ', save_fn)
             # load metadata from given tif file(s)
-            latents = self.reinit_model_from_metadata(path, output_shape)
+            latents = self.reinit_model_from_metadata(path=path, output_shape=output_shape)
+            latents = self.model.sample_latents(reuse_latents=latents)
             volumes, metadata = self.run_volumes(latents=latents,
                                                  num_samples=num_samples,
                                                  zoom_schedule=zoom_schedule,
                                                  pan_schedule=pan_schedule,
                                                  splits=splits,
                                                  autosave=False)
-            self.logger.info(f'saving {len(volumes)} TIFF/PNG images at: {save_fn} of size: {volumes[0].shape}')
+            self.logger.info(f'saving {len(volumes)} TIFF/PNG images at: {save_fn}')
             for i, (volume, meta) in enumerate(zip(volumes, metadata)):
-                utils.write_image(path=f'{save_fn}_{i}', img=volume, suffix='png', colormaps=self.colormaps)
-                utils.write_image(path=f'{save_fn}_{i}', img=volume, suffix='tif', metadata=meta)
+                if self.save_verbose:
+                    self.logger.info(f'saving TIFF/PNG images at: {save_fn} of size: {volume.shape}')
+                utils.write_image(path=save_fn+f'_front_view_{i}', img=volume[0, :, :, :], suffix='jpg')
+                utils.write_image(path=save_fn+f'_side_view_{i}',  img=volume[:, 0, :, :], suffix='jpg')
+                utils.write_image(path=save_fn+f'_top_view_{i}',   img=volume[:, :, 0, :], suffix='jpg')
+                utils.write_image(path=save_fn, img=volume, suffix='tif', metadata=meta)
             if save_video:
                 utils.write_video(volumes, self.output_dir, save_name=basename)
             volumes = None

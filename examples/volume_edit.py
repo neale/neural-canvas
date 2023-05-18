@@ -16,8 +16,8 @@ def load_args(argv=None):
     parser.add_argument('--x_dim', default=256, type=int, help='out image width')
     parser.add_argument('--y_dim', default=256, type=int, help='out image height')
     parser.add_argument('--z_dim', default=256, type=int, help='out image height')
-
     parser.add_argument('--c_dim', default=4, type=int, help='channels')
+    parser.add_argument('--splits', default=1, type=int, help='split latents to save memory')
     parser.add_argument('--mlp_layer_width', default=32, type=int, help='net width')    
     parser.add_argument('--activations', default='fixed', type=str,
         help='activation set for generator')
@@ -48,11 +48,11 @@ def load_args(argv=None):
     parser.add_argument('--save_zoom_stack', action='store_true', help='save zoomed in/out frames')
     # For Zoom videos
     parser.add_argument('--zoom_bounds', default=(.5, .5, .5), type=tuple, help='zoom in/out boundaries')
-    parser.add_argument('--zoom_schedule', default='linear', type=str, help='zoom in/out pacing',
+    parser.add_argument('--zoom_schedule', default=None, type=str, help='zoom in/out pacing',
         choices=['linear', 'geometric', 'cosine', 'sigmoid', 'exp', 'log', 'sqrt', 'cbrt'])
     # For Pan videos
     parser.add_argument('--pan_bounds', default=(2, 2, 2), type=tuple, help='pan boundaries')
-    parser.add_argument('--pan_schedule', default='linear', type=str, help='pan pacing',
+    parser.add_argument('--pan_schedule', default=None, type=str, help='pan pacing',
         choices=['linear', 'geometric', 'cosine', 'sigmoid', 'exp', 'log', 'sqrt', 'cbrt'])
     # For regenerating and augmenting images
     parser.add_argument('--regen_image_path', type=str, default=None, help='path to image to regenerate')
@@ -80,18 +80,18 @@ if __name__ == '__main__':
         device = 'cuda'
     else:
         device = 'cpu'
-    if args.zoom_scheduler is not None:
-        print (f'Using zoom scheduler: {args.zoom_scheduler}')
-        zoom_schedule = getattr(schedulers, args.zoom_scheduler)(
+    if args.zoom_schedule is not None:
+        print (f'Using zoom schedule: {args.zoom_schedule}')
+        zoom_schedule = getattr(schedulers, args.zoom_schedule)(
             *args.zoom_bounds, args.num_samples)
         zoom_schedule = torch.stack([zoom_schedule, zoom_schedule], -1)
         print (zoom_schedule)
 
     else:
         zoom_schedule = None
-    if args.pan_scheduler is not None:
-        print (f'Using pan scheduler: {args.pan_scheduler}')
-        pan_schedule = getattr(schedulers, args.pan_scheduler)(
+    if args.pan_schedule is not None:
+        print (f'Using pan scheduler: {args.pan_schedule}')
+        pan_schedule = getattr(schedulers, args.pan_schedule)(
             *args.pan_bounds, args.num_samples)
         pan_schedule = torch.stack([pan_schedule, pan_schedule], -1)
     else:
@@ -99,13 +99,13 @@ if __name__ == '__main__':
     
     if args.regen_image_path is not None:
         runner = runner3d.RunnerINRF3D(output_dir=args.output_dir, colormaps=args.colormaps)
-        runner.regen_frames(path=args.regen_image_path,
-                            output_shape=(args.regen_x_dim,
-                                          args.regen_y_dim,
-                                          args.regen_z_dim,
-                                          args.regen_c_dim),
-                            num_samples=args.num_samples,
-                            splits=1,
-                            zoom_schedule=zoom_schedule,
-                            pan_schedule=pan_schedule,
-                            save_video=args.save_video_from_frames)
+        runner.regen_volumes(path=args.regen_image_path,
+                             output_shape=(args.regen_x_dim,
+                                           args.regen_y_dim,
+                                           args.regen_z_dim,
+                                           args.regen_c_dim),
+                             num_samples=args.num_samples,
+                             splits=args.splits,
+                             zoom_schedule=zoom_schedule,
+                             pan_schedule=pan_schedule,
+                             save_video=args.save_video_from_volumes)

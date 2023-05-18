@@ -41,8 +41,10 @@ def unnormalize_and_numpy(x, output_activation='tanh'):
     x = x.detach().cpu().numpy()
     if output_activation == 'tanh':
         x = ((x + 1.) * 127.5).astype(np.uint8)
-    else:
+    elif output_activation == 'sigmoid':
         x = (x * 255.).astype(np.uint8)
+    else:
+        x = (x * (255./x.max())).astype(np.uint8)
     return x
 
 def write_image(path, img, suffix='jpg', metadata=None, colormaps=None):
@@ -126,6 +128,10 @@ def load_tif_metadata(path):
         'c_dim': int(data['c_dim']),
         'device': data['device'],
     }
+    if 'z_dim' in data:
+        metadata['z_dim'] = int(data['z_dim'])
+    else:
+        metadata['z_dim'] = int(data['x_dim'])
     for int_key in ['mlp_layer_width', 'conv_feature_map_size', 'input_encoding_dim', 'num_graph_nodes']:
         try:
             metadata[int_key] = int(data[int_key])
@@ -144,12 +150,12 @@ def load_tif_metadata(path):
         except KeyError:
             metadata[str_key] = None
             warnings.warn(f'Key {str_key} not found in metadata, setting to None.')
-    for dict_key in ['latents']:
+    for tensor_key in ['latents']:
         try:
-            metadata[dict_key] = data[dict_key]
+            metadata[tensor_key] = torch.Tensor(data[tensor_key])
         except KeyError:
-            metadata[dict_key] = None
-            warnings.warn(f'Key {dict_key} not found in metadata, setting to None.')
+            metadata[tensor_key] = None
+            warnings.warn(f'Key {tensor_key} not found in metadata, setting to None.')
     return img, metadata
 
 

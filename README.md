@@ -165,15 +165,17 @@ from neural_canvas.models.inrf import INRF3D
 model = INRF3D()
 # Generate the image given by the random INRF
 size = (256, 256, 256)
-model.generate(output_shape=size)
-
+vol = model.generate(output_shape=size)
+print ('volume size', vol.shape)
 # We can do all the same transformations as with 2D INRFs
 # Warning: 3D generation consumes large amounts of memory. With 64GB of RAM, 1500**3 is the max size
-# `splits` generates the volume in parts to consume less memory
-size = (1000, 1000)
-latents, fields, meta_latents = model.init_latent_inputs(output_shape=size, splits=100)
-
-model.generate(output_shape=size)
+# `splits` generates the volume in parts to consume less memory, increase splits if OOM
+size = (512, 512, 512)
+model = INRF3D(graph_topology='WS')
+latents = model.sample_latents(output_shape=size)
+fields = model.construct_fields(output_shape=size)
+vol = model.generate(output_shape=size, latents=latents, fields=fields, splits=32)
+print ('volume size', vol.shape)
 ```
 
 ### Render 3D volumetric data with PyVista and Fiji
@@ -183,11 +185,11 @@ The simplest way to render out the 3D volumetric data is with a package like [Py
 ```python
 import pyvista as pv
 import numpy as np
-import neural_canvas.utils as utils
 
+model = INRF3D(graph_topology='WS')
 size = (256, 256, 256)
-vol = model.generate(output_shape=size)
-rgb = utils.unnormalize_and_numpy(vol, bounds=(0, 1)).reshape(-1, 3)
+rgb = model.generate(output_shape=size, splits=4)[0]
+rgb = rgb.reshape(-1, 3)
 rgba = np.concatenate((rgb, np.ones((rgb.shape[0], 1), dtype=np.uint8)), 1)
 # plot with pyvista
 grid = pv.UniformGrid(dimensions=size)

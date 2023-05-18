@@ -1,26 +1,23 @@
 # Example config for generating and upscaling images with an INRF2D
 
-num_samples: 200
+num_samples: 1
 batch_size: 1
 # use_gpu: True
 seed: 62
 ignore_seed: True
-# For generating randomized images (best for getting lucky)
-random_settings: True
 
-# colormaps: [luv, hsv, lab]  # gray, hls
+colormaps: [luv, hsv, lab]  # gray, hls
 # For Zoom videos
-zoom_bounds: [.0000001, 1000] #[.0001, 1000] # 
-zoom_scheduler: geometric # linear geometric, cosine, exp, sqrt, sigmoid, cbrt
+# zoom_bounds: [.0000001, 1000] #[.0001, 1000] # 
+# zoom_scheduler: geometric # linear geometric, cosine, exp, sqrt, sigmoid, cbrt
 # For Pan videos
-#pan_bounds: [1, 100]
-#pan_scheduler: linear  # geometric, cosine, exp, sqrt, sigmoid, cbrt 
+# pan_bounds: [1, 100]
+# pan_scheduler: linear  # geometric, cosine, exp, sqrt, sigmoid, cbrt 
 # For regenerating and augmenting images
 regen_x_dim: 2000
 regen_y_dim: 2000
 regen_c_dim: 3
-save_video_from_frames: True
-regen_image_path: outputs/200zoom
+#save_video_from_frames: True
+regen_image_path: outputs/test_gen
 #gen_image_2127140_0.tif
-#output_dir: outputs/generate_2d_zoom_geometric2
-output_dir: outputs/200zoom_output
+output_dir: outputs/test_regen

@@ -97,17 +97,17 @@ class RunnerINRF2D:
                 pan = pan_schedule[i]
             else:
                 pan = (2, 2)
-            latents_gen, fields = self.model.init_latent_inputs(reuse_latents=latents,
-                                                                zoom=zoom,
-                                                                pan=pan) 
-            frame = self.model.generate(latents_gen, fields, splits, unnormalize_output=True)
+            output_shape = (self.model.x_dim, self.model.y_dim)
+            latents = self.model.sample_latents(reuse_latents=latents, output_shape=output_shape)
+            fields = self.model.construct_fields(output_shape=output_shape, zoom=zoom, pan=pan) 
+            frame = self.model.generate(latents, fields, splits=splits)
             if frame.ndim == 4 and frame.shape[0] == 1:
                 frame = frame[0]     
             if self.skip_blank_generations:
-                if np.abs(frame.max() - frame.min()) < 15:
+                if np.abs(frame.max() - frame.min()) < 20:
                     self.logger.info('skipping blank output')
                     continue
-            metadata.append(self.model._metadata(latents_gen))
+            metadata.append(self.model._metadata(latents))
             if autosave:
                 save_fn = os.path.join(self.output_dir, f'{self.save_prefix}_{randID}_{i}')
                 if self.save_verbose:
@@ -129,7 +129,7 @@ class RunnerINRF2D:
         """
         if metadata is None:
             _, metadata = utils.load_tif_metadata(path)
-        assert len(output_shape) == 3, f'Invalid output shape: {output_shape}'
+        assert len(output_shape) == 3, f'Invalid output shape: {output_shape}, need ndim=3'
         model = INRF2D(output_shape=output_shape,
                        output_dir=self.output_dir,
                        latent_dim=metadata['latent_dim'],
@@ -149,7 +149,9 @@ class RunnerINRF2D:
                           num_graph_nodes=metadata['num_graph_nodes'],
                           graph=metadata['graph'],)
         self.model = model
-        return metadata['latents']
+        loaded_latents = {'sample': metadata['latents'], 
+                          'sample_shape': (metadata['x_dim'], metadata['y_dim'])}
+        return loaded_latents
 
     def regen_frames(self,
                      path,
@@ -197,7 +199,7 @@ class RunnerINRF2D:
                 print ('Running reproduction for: ', path, 'saving at: ', save_fn)
             # load metadata from given tif file(s)
             latents = self.reinit_model_from_metadata(path=path, output_shape=output_shape)
-  
+            latents = self.model.sample_latents(reuse_latents=latents)
             frames, metadata = self.run_frames(latents=latents,
                                                num_samples=num_samples,
                                                zoom_schedule=zoom_schedule,
@@ -248,24 +250,26 @@ class RunnerINRF2D:
             optimizer, T_0=200, T_mult=2)
         loss = losses.LossModule(**loss_weights)
         epoch_iterator = tqdm.tqdm(range(num_epochs))
-        latents, inputs = self.model.init_latent_inputs()
-        test_latents, test_inputs, _ = self.model.init_latent_inputs(
-            reuse_latents=latents,
-            output_shape=output_shape)
+        latents = self.model.sample_latents(output_shape=target.shape[2:])
+        fields = self.model.construct_fields(output_shape=target.shape[2:])
+        
+        test_latents = self.model.sample_latents(output_shape=output_shape[:-1])
+        test_fields = self.model.construct_fields(output_shape=output_shape[:-1])
+
         if use_fourier_encoding:
             input_encoding = FourierEncoding(num_freqs).to(device)
-            inputs = input_encoding(inputs)
-            test_inputs = input_encoding(test_inputs)
+            fields = input_encoding(fields)
+            test_fields = input_encoding(test_fields)
 
         loss_vals = []
         for epoch in epoch_iterator:
-            frame, test_frame, loss_val = self.model.fit(target,
+            frame, test_frame, loss_val = self.model.fit(target[0],
                                                          num_iters_per_epoch,
                                                          loss,
                                                          optimizer=optimizer,
                                                          scheduler=scheduler,
-                                                         inputs=(latents, inputs),
-                                                         test_inputs=(test_latents, test_inputs),
+                                                         inputs=(latents, fields),
+                                                         test_inputs=(test_latents, test_fields),
                                                          test_resolution=output_shape,)
             epoch_iterator.set_description(f'Epoch: {epoch}, Loss: {loss_val:.4f}')
             loss_vals.append(loss_val.item())
@@ -274,16 +278,6 @@ class RunnerINRF2D:
                 frame = frame[0]
             if test_frame.ndim == 4 and test_frame.shape[0] == 1:
                 test_frame = test_frame[0]
-            frame = frame.permute(1, 2, 0)
-            test_frame = test_frame.permute(1, 2, 0)
-            frame = frame.detach().cpu().numpy()
-            test_frame = test_frame.detach().cpu().numpy()
-            if self.model.map_fn.final_activation == 'tanh':
-                frame = ((frame + 1.) * 127.5).astype(np.uint8)
-                test_frame = ((test_frame + 1.) * 127.5).astype(np.uint8)
-            else:
-                frame = (frame * 255).astype(np.uint8)
-                test_frame = (test_frame * 255).astype(np.uint8)
 
             metadata = self.model._metadata(latent=latents)
             test_metadata = self.model._metadata(latent=test_latents)

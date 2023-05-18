@@ -63,17 +63,17 @@ if __name__ == '__main__':
         device = 'cpu'
     print (f'Using device: {device}')
     if args.random_settings:
-        args.latent_dim = int(np.random.choice([4, 8, 16, 32, 64]))
+        args.latent_dim = int(np.random.choice([8, 16, 32, 64]))
         args.latent_scale = float(np.random.choice([.1, .5, 1, 4, 8, 16, 32, 64]))
-        args.mlp_layer_width = int(np.random.choice([16, 32, 64, 128]))
-        args.activations = str(np.random.choice(['basic', 'random']))
-        args.graph_topology = 'WS' #:str(np.random.choice(['mlp_fixed', 'WS']))
+        args.mlp_layer_width = int(np.random.choice([16, 32, 64]))
+        args.activations = str(np.random.choice(['fixed', 'random']))
+        args.graph_topology = str(np.random.choice(['simple', 'mlp', 'WS']))
         args.ws_graph_nodes = int(np.random.choice([8, 16]))#, 32, 64]))
         args.weight_init = str(np.random.choice(['normal', 'uniform']))
         args.weight_init_mean = float(np.random.choice([-3, -2, -1, 0, 1, 2, 3]))
-        args.weight_init_std = float(np.random.choice([.5, .85, 1.0, 1.15, 1.5]))
-        args.weight_init_min = float(np.random.choice([-4, -3, -2, -1]))
-        args.weight_init_max = float(np.random.choice([1, 2, 3, 4]))
+        args.weight_init_std = float(np.random.choice([.5, .85, 1.0, 1.15]))
+        args.weight_init_min = float(np.random.choice([-3, -2, -1]))
+        args.weight_init_max = float(np.random.choice([1, 2, 3]))
         print (f'Randomly selected settings: {args}')
 
     generator = INRF2D(latent_dim=args.latent_dim,

@@ -92,10 +92,11 @@ class INRRandomGraph3D(nn.Module):
         r_ = self.acts_start[2](self.linear_r(r))
         y_ = self.acts_start[3](self.linear_y(y))
         x_ = self.acts_start[4](self.linear_x(x))
-        f = self.acts_start[5](z_ + x_ + y_ + r_)
+        f = z_ + x_ + y_ + r_
         if latents is not None:
             latents_ = self.acts_start[0](self.linear_latents(latents))
             f = f + latents_
+        f = self.acts_start[5](f)
         f = self.acts_start[6](self.linear1(f))
         res = self.scale(self.network(f))
         res = self.act_out(res)
@@ -131,11 +132,12 @@ class INRLinearMap3D(nn.Module):
         self.linear4 = nn.Linear(self.layer_width, self.c_dim)
 
         if self.activations == 'random':
-            acts = [randact(activation_set='large') for _ in range(5)]
+            acts = [randact(activation_set='large') for _ in range(9)]
         elif self.activations == 'fixed':
-            acts = [nn.GELU(), nn.Tanh(), nn.ELU(), SinLayer(), ScaleAct()]
+            acts = [nn.Tanhshrink(), nn.Tanh(), nn.ELU(), SinLayer(), 
+                    nn.RReLU(), nn.ELU(), nn.SiLU(), SinLayer(), ScaleAct()]
         elif hasattr(torch.nn, activations):
-            acts = [getattr(torch.nn, activations)() for _ in range(5)]
+            acts = [getattr(torch.nn, activations)() for _ in range(9)]
         else:
             raise ValueError('activations must be `fixed`, `random`, ' \
                              f'or else a valid torch.nn activation, got `{activations}`')
@@ -149,7 +151,7 @@ class INRLinearMap3D(nn.Module):
             self.act_out = nn.Identity()
 
     def generate_new_acts(self):
-        acts = [randact(activation_set='large') for _ in range(5)]
+        acts = [randact(activation_set='large') for _ in range(9)]
         self.acts = nn.ModuleList(acts)    
 
     def get_graph(self):
@@ -176,21 +178,20 @@ class INRLinearMap3D(nn.Module):
     
     def forward(self, inputs, latents=None):
         x, y, z, r = inputs[:, 0, ...], inputs[:, 1, ...], inputs[:, 2, ...], inputs[:, 3, ...]
-        x_pt = self.linear_x(x)
-        y_pt = self.linear_y(y)
-        r_pt = self.linear_r(r)
-        z_pt = self.linear_z(z)
+        x_pt = self.acts[0](self.linear_x(x))
+        y_pt = self.acts[1](self.linear_y(y))
+        r_pt = self.acts[2](self.linear_r(r))
+        z_pt = self.acts[3](self.linear_z(z))
         z = z_pt + x_pt + y_pt + r_pt
         if latents is not None:
-            latents_pt = self.linear_latents(latents)
+            latents_pt = self.acts[4](self.linear_latents(latents))
             z = z + latents_pt
-        z = self.acts[0](z)
-        z = self.acts[1](self.linear1(z))
-        z = self.acts[2](self.linear2(z))
-        z = self.acts[3](self.linear3(z))
-        x = self.acts[4](self.linear4(z))
-        x = self.act_out(x)
-        return x
+        z = self.acts[5](z)
+        z = self.acts[6](self.linear1(z))
+        z = self.acts[7](self.linear2(z))
+        z = self.acts[8](self.linear3(z))
+        z_out = self.act_out(self.linear4(z))
+        return z_out
 
 
 

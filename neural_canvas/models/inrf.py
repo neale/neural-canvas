@@ -100,6 +100,7 @@ class INRF2D(INRFBase):
         if self.map_fn is not None:
             metadata['mlp_layer_width'] = self.mlp_layer_width
             metadata['conv_feature_map_size'] = self.conv_feature_map_size
+            metadata['input_encoding_dim'] = self.input_encoding_dim
             metadata['activations'] = self.activations
             metadata['final_activation'] = self.final_activation
             metadata['weight_init'] = self.weight_init
@@ -112,8 +113,7 @@ class INRF2D(INRFBase):
             if hasattr(self.map_fn, 'get_graph_str'):
                 metadata['graph'] = self.map_fn.get_graph_str()
         if latent is not None:
-            metadata['latent'] = latent.detach().cpu().tolist()
-
+            metadata['latents'] = latent['sample'].detach().cpu().tolist()
         return metadata
     
     @property
@@ -187,7 +187,13 @@ class INRF2D(INRFBase):
             weight_init_max (float): maximum value of the weight initialization
             graph (torch.Tensor): networkx string representation of the graph
         """
-        if graph_topology == 'mlp':
+        if graph_topology == 'simple':
+            map_fn = INRLSimpleLinearMap(
+                self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
+                input_encoding_dim=input_encoding_dim,
+                activations=activations, final_activation=final_activation)
+
+        elif graph_topology == 'mlp':
             map_fn = INRLinearMap(
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
                 input_encoding_dim=input_encoding_dim,
@@ -338,11 +344,10 @@ class INRF2D(INRFBase):
             if sample_latent:
                 latents = self.sample_latents(output_shape=output_shape)
 
-        batch_size = fields['shape'][0]
         output_shape = fields['shape'] + (self.c_dim,)
         if latents is not None:
             latent = latents['input']
-            if 'mlp' in self.graph_topology or 'WS' in self.graph_topology: # flatten inputs
+            if self.graph_topology in['mlp', 'WS', 'simple']:
                 latent = latent.reshape(-1, self.latent_dim)
             if splits > 1:
                 latent = torch.split(latent, latent.shape[0]//splits, dim=0)
@@ -350,9 +355,9 @@ class INRF2D(INRFBase):
             latent = None
 
         field = fields['coords']  # [B, NF, H, W]
-        if self.graph_topology in['mlp', 'WS']:
-            field = field.reshape(batch_size, field.shape[1], -1)
-            field = field.transpose(0, 2)
+        if self.graph_topology in['mlp', 'WS', 'simple']:
+            field = field.reshape(1, field.shape[1], -1)
+            field = field.permute(2, 1, 0)
         if splits == 1:
             frame = self.map_fn(field, latent)
         elif splits > 1:
@@ -378,14 +383,14 @@ class INRF2D(INRFBase):
         else:
             raise ValueError(f'splits must be >= 1, got {splits}')
 
-        if self.graph_topology in ['mlp', 'WS']:
+        if self.graph_topology in ['mlp', 'WS', 'simple']:
             frame = frame.reshape(output_shape)
         elif self.graph_topology == 'conv':
             frame = frame.permute(0, 2, 3, 1) # [B, C, H, W] -> [B, H, W, C]
-        if unnormalize_output:
-            frame = unnormalize_and_numpy(frame, self.map_fn.final_activation)
+        #if unnormalize_output:
+        #    frame = unnormalize_and_numpy(frame, self.map_fn.final_activation)
         self.logger.debug(f'Output Frame Shape: {frame.shape}')
-        return frame
+        return (frame*255).numpy().astype(np.uint8)
 
     def fit(self,
             target,
@@ -449,7 +454,7 @@ class INRF2D(INRFBase):
                 scheduler.step()
             
         test_frame = self.map_fn(test_fields['coords'], test_latents['input'])
-        test_frame = test_frame.reshape(test_resolution)
+        test_frame = test_frame.permute(0, 2, 3, 1)
         test_frame = unnormalize_and_numpy(test_frame, self.map_fn.final_activation)
         frame = unnormalize_and_numpy(frame[0].permute(1, 2, 0), self.map_fn.final_activation)
         return frame, test_frame, loss_val
@@ -540,6 +545,7 @@ class INRF3D(INRFBase):
         if self.map_fn is not None:
             metadata['mlp_layer_width'] = self.mlp_layer_width
             metadata['conv_feature_map_size'] = self.conv_feature_map_size
+            metadata['input_encoding_dim'] = self.input_encoding_dim
             metadata['activations'] = self.activations
             metadata['final_activation'] = self.final_activation
             metadata['weight_init'] = self.weight_init
@@ -552,8 +558,9 @@ class INRF3D(INRFBase):
 
             if hasattr(self.map_fn, 'get_graph_str'):
                 metadata['graph'] = self.map_fn.get_graph_str()
+
         if latent is not None:
-            metadata['latent'] = latent.detach().cpu().tolist()
+            metadata['latents'] = latent['sample'].detach().cpu().tolist()
         return metadata
     
     @property
@@ -595,6 +602,7 @@ class INRF3D(INRFBase):
     def init_map_fn(self,
                     mlp_layer_width=32,
                     conv_feature_map_size=64,
+                    input_encoding_dim=1,
                     activations='fixed',
                     final_activation='sigmoid',
                     weight_init='normal',
@@ -646,6 +654,7 @@ class INRF3D(INRFBase):
 
         self.mlp_layer_width = mlp_layer_width
         self.conv_feature_map_size = conv_feature_map_size
+        self.input_encoding_dim = input_encoding_dim
         self.activations = activations
         self.final_activation = final_activation
         self.weight_init = weight_init
@@ -684,7 +693,7 @@ class INRF3D(INRFBase):
                                     scale=self.latent_scale,
                                     as_mat=True)
             coords = torch.stack(fields, 0).unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
-        fields = {'coords': coords, 
+        fields = {'coords': coords.to(self.device), 
                   'shape': (batch_size, x_dim, y_dim, z_dim),
                   'zoom': zoom,
                   'pan': pan}
@@ -720,15 +729,16 @@ class INRF3D(INRFBase):
                        'sample_shape': (x_dim, y_dim, z_dim)}
         if self.graph_topology == 'conv':  #
             sample = torch.ones(batch_size, self.latent_dim, x_dim, y_dim, z_dim)
-            latents['sample'] = sample.uniform_(-2, 2)
+            latents['sample'] = sample.uniform_(-1, 1)
             latents['inputs'] = latents['sample'].clone()
         else:
             if 'sample' not in latents.keys():
                 sample = torch.ones(batch_size, 1, self.latent_dim)
-                sample = sample.uniform_(-2, 2)
+                sample = sample.uniform_(-1, 1)
                 latents['sample'] = sample
-                latents['input'] = sample.clone()
-
+            latents['input'] = latents['sample'].clone()
+            #one_vec = torch.ones(x_dim*y_dim*z_dim, 1).float().to(self.device)
+            #latents['input'] = torch.matmul(one_vec, latents['sample']) * self.latent_scale
         latents['input'] = latents['input'].to(self.device)
         return latents
     
@@ -777,9 +787,10 @@ class INRF3D(INRFBase):
         if latents is not None:
             if splits == 1:
                 latent = latents['input']
-                one_vec = torch.ones(*fields['shape'], 1).float().to(self.device)
-                latent = torch.matmul(one_vec, latent) * self.latent_scale
-            latent = latents['input'].view(batch_size, 1, self.latent_dim)
+                size = np.prod(latents['base_shape'])
+                one_vec = torch.ones(size, 1).float().to(self.device)
+                latents['input'] = torch.matmul(one_vec, latent) * self.latent_scale
+            latent = latents['input'].view(-1,  self.latent_dim)
         else:
             latent = None
 
@@ -788,12 +799,14 @@ class INRF3D(INRFBase):
             if self.graph_topology in ['mlp', 'WS']:
                 fields = fields.reshape(batch_size, fields.shape[1], -1)
                 fields = fields.transpose(0, 2)
+                print (fields.shape, latent.shape)
             volume = self.map_fn(fields, latent)
         elif splits > 1:
             assert n_pts % splits == 0, 'number of splits must be divisible by number of points'
             fields = torch.split(fields, fields.shape[2]//splits, dim=2)
             for i, field_i in enumerate(fields):
-                field_i = field_i.reshape(batch_size*(n_pts//splits), field_i.shape[1], 1)
+                field_i = field_i.reshape(batch_size, field_i.shape[1], -1)
+                field_i = field_i.permute(2, 1, 0)
                 one_vec = torch.ones(n_pts//splits, 1, dtype=torch.float).to(self.device)
                 if latent is not None:
                     latent_one_vec_i = latent * one_vec * self.latent_scale

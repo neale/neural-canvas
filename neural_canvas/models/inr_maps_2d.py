@@ -38,12 +38,12 @@ class INRRandomGraph(nn.Module):
         self.linear2 = nn.Linear(self.layer_width, self.layer_width)
         self.scale = ScaleAct()
         if self.activations == 'random':
-            acts = [randact(activation_set='large') for _ in range(6)]
+            acts = [randact(activation_set='large') for _ in range(7)]
         elif self.activations == 'fixed':
             acts = [nn.Tanh(), nn.ELU(), nn.Softplus(), nn.Tanh(), 
-                    Gaussian(), SinLayer()]
+                    Gaussian(), SinLayer(), nn.Tanh()]
         elif hasattr(torch.nn, activations):
-            acts = [getattr(torch.nn, activations)() for _ in range(6)]
+            acts = [getattr(torch.nn, activations)() for _ in range(7)]
         else:
             raise ValueError('activations must be `fixed`, `random`, '\
                              f'or else a valid torch.nn activation, got {activations}')
@@ -80,7 +80,7 @@ class INRRandomGraph(nn.Module):
             self.act_out = nn.Identity()
         
     def generate_act_list(self):
-        acts = [randact(activation_set='large') for _ in range(6)]
+        acts = [randact(activation_set='large') for _ in range(7)]
         self.acts = nn.ModuleList(acts)    
 
     def get_graph_str(self):
@@ -95,15 +95,76 @@ class INRRandomGraph(nn.Module):
         r_ = self.acts_start[1](self.linear_r(r))
         y_ = self.acts_start[2](self.linear_y(y))
         x_ = self.acts_start[3](self.linear_x(x))
-        f = self.acts_start[4](x_+ y_+ r_)
+        f = (x_+ y_+ r_)
         if latents is not None:
             latents_ = self.acts_start[0](self.linear_latents(latents))
             f = f + latents_
+        f = self.acts_start[4](f)
         f = self.acts_start[5](self.linear1(f))
-        res = self.scale(self.network(f))
+        res = self.acts_start[6](self.scale(self.network(f)))
         res = self.act_out(res)
         return res
    
+class INRLSimpleLinearMap(nn.Module):
+    def __init__(self,
+                 latent_dim,
+                 c_dim,
+                 layer_width,
+                 input_encoding_dim,
+                 activations='fixed',
+                 final_activation='sigmoid',
+                 name='INRSimpleLinearMap'):
+        super(INRLSimpleLinearMap, self).__init__()
+        self.latent_dim = latent_dim
+        self.c_dim = c_dim
+        self.layer_width = layer_width
+        self.input_encoding_dim = input_encoding_dim
+        self.activations = activations
+        self.final_activation = final_activation
+
+        self.name = name
+
+        self.linear_latents = nn.Linear(self.latent_dim, self.layer_width)
+        self.linear_x = nn.Linear(self.input_encoding_dim, self.layer_width, bias=False)
+        self.linear_y = nn.Linear(self.input_encoding_dim, self.layer_width, bias=False)
+        self.linear_r = nn.Linear(self.input_encoding_dim, self.layer_width, bias=False)
+        self.linear1 = nn.Linear(self.layer_width, self.layer_width)
+        self.linear2 = nn.Linear(self.layer_width, self.c_dim)
+
+        if final_activation == 'tanh':
+            self.act_out = torch.tanh
+        elif final_activation == 'sigmoid':
+            self.act_out = torch.sigmoid
+        elif final_activation is None:
+            self.act_out = nn.Identity()
+    
+    def generate_act_list(self):
+        acts = [randact(activation_set='large') for _ in range(6)]
+        self.acts = nn.ModuleList(acts)    
+
+    def forward(self, fields, latents=None):
+        #TODO refactor this to look better, its clunky to support positional encodings
+        if fields.ndim == 4: # after positional encoding
+            chunk_size = fields.shape[1]//3
+            x = fields[:, :chunk_size, :, 0].permute(0, 2, 1)
+            y = fields[:, chunk_size:2*chunk_size, :, 0].permute(0, 2, 1)
+            r = fields[:, chunk_size*2:, :, 0].permute(0, 2, 1)
+        else:
+            x, y, r = fields[:, 0, ...], fields[:, 1, ...], fields[:, 2, ...]
+        x_pt = self.linear_x(x)
+        y_pt = self.linear_y(y)
+        r_pt = self.linear_r(r)
+        z = x_pt + y_pt + r_pt
+        if latents is not None:
+            latents_pt = self.linear_latents(latents)
+            z = z + latents_pt
+        z = torch.tanh(z)
+        z = torch.nn.functional.elu(self.linear1(z))
+        z = torch.nn.functional.softplus(self.linear1(z))
+        z = torch.tanh(self.linear1(z))
+        z_out = .5 * torch.sin(self.linear2(z)) + .5
+        
+        return z_out
 
 class INRLinearMap(nn.Module):
     def __init__(self,
@@ -135,11 +196,12 @@ class INRLinearMap(nn.Module):
         self.linear4 = nn.Linear(self.layer_width, self.c_dim)
 
         if self.activations == 'random':
-            acts = [randact(activation_set='large') for _ in range(5)]
+            acts = [randact(activation_set='large') for _ in range(9)]
         elif self.activations == 'fixed':
-            acts = [nn.GELU(), nn.Softplus(), nn.Tanh(), SinLayer(), ScaleAct()]
+            acts = [ScaleAct(), nn.Softplus(), nn.Tanh(), SinLayer(), 
+                    nn.GELU(), nn.Softplus(), nn.Tanh(), SinLayer(), ScaleAct()]
         elif hasattr(torch.nn, activations):
-            acts = [getattr(torch.nn, activations)() for _ in range(5)]
+            acts = [getattr(torch.nn, activations)() for _ in range(9)]
         else:
             raise ValueError('activations must be `fixed`, `random`, '\
                              f'or else a valid torch.nn activation, got {activations}')
@@ -153,7 +215,7 @@ class INRLinearMap(nn.Module):
             self.act_out = nn.Identity()
 
     def generate_new_acts(self):
-        acts = [randact(activation_set='large') for _ in range(5)]
+        acts = [randact(activation_set='large') for _ in range(9)]
         self.acts = nn.ModuleList(acts)    
 
     def get_graph(self):
@@ -180,7 +242,6 @@ class INRLinearMap(nn.Module):
  
     def forward(self, fields, latents=None):
         #TODO refactor this to look better, its clunky to support positional encodings
-        # field inputs should probably be a dict, since they have physical relevance
         if fields.ndim == 4: # after positional encoding
             chunk_size = fields.shape[1]//3
             x = fields[:, :chunk_size, :, 0].permute(0, 2, 1)
@@ -188,19 +249,17 @@ class INRLinearMap(nn.Module):
             r = fields[:, chunk_size*2:, :, 0].permute(0, 2, 1)
         else:
             x, y, r = fields[:, 0, ...], fields[:, 1, ...], fields[:, 2, ...]
-        x_pt = self.linear_x(x)
-        y_pt = self.linear_y(y)
-        r_pt = self.linear_r(r)
+        x_pt = self.acts[0](self.linear_x(x))
+        y_pt = self.acts[1](self.linear_y(y))
+        r_pt = self.acts[2](self.linear_r(r))
         z = x_pt + y_pt + r_pt
         if latents is not None:
-            latents_pt = self.linear_latents(latents)
-            z = z + latents_pt
-        z = self.acts[0](z)
-        z = self.acts[1](self.linear1(z))
-        z = self.acts[2](self.linear2(z))
-        z = self.acts[3](self.linear3(z))
-        z = self.acts[4](self.linear4(z))
-        z_out = self.act_out(z)
+            z += self.acts[3](self.linear_latents(latents))
+        z = self.acts[4](z)
+        z = self.acts[5](self.linear1(z))
+        z = self.acts[6](self.linear2(z))
+        z = self.acts[7](self.linear3(z))
+        z_out = self.act_out(self.linear4(z))
         return z_out
 
 

@@ -133,7 +133,7 @@ if __name__ == '__main__':
                                        output_dir=args.output_dir,
                                        save_verbose=False)
         loss_vals = runner.fit(target,
-                               output_shape=(args.x_dim, args.y_dim),
+                               output_shape=(args.x_dim, args.y_dim, args.c_dim),
                                loss_weights = {
                                    'perceptual_alpha': args.perceptual_loss_weight,
                                    'l1_alpha': args.l1_loss_weight,
