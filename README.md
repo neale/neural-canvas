@@ -182,6 +182,22 @@ print ('volume size', vol.shape)
 
 The simplest way to render out the 3D volumetric data is with a package like [PyVista](https://docs.pyvista.org/version/stable/) which is highly configurable and integrates nicely with the python ecosystem. 
 
+A nice 2D transfer function is implemented to map the RGB volumetric cube to an opacity map that is nicer than just a cube. 
+
+We can also get an interactive visualization of different transfer functions, and the resulting 3D volume rendered with PyVista. 
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/neale/neural-canvas/main/neural_canvas/assets/all_tf.png" alt="all_TF"></img>
+</div>
+
+This interactive visualization can be reproduced by running `python3 examples/render_volumes.py`
+
+`render_volumes.py` also reproduces a larger interactive plot with one of the transfer functions, and the resulting 3D volume rendered with PyVista.
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/neale/neural-canvas/main/neural_canvas/assets/pv.png" alt="pv"></img>
+</div>
+
 ```python
 import pyvista as pv
 import numpy as np
