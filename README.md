@@ -198,23 +198,6 @@ This interactive visualization can be reproduced by running `python3 examples/re
 <img src="https://raw.githubusercontent.com/neale/neural-canvas/main/neural_canvas/assets/pv.png" alt="pv"></img>
 </div>
 
-```python
-import pyvista as pv
-import numpy as np
-
-model = INRF3D(graph_topology='WS')
-size = (256, 256, 256)
-rgb = model.generate(output_shape=size, splits=4)[0]
-rgb = rgb.reshape(-1, 3)
-rgba = np.concatenate((rgb, np.ones((rgb.shape[0], 1), dtype=np.uint8)), 1)
-# plot with pyvista
-grid = pv.UniformGrid(dimensions=size)
-p = pv.Plotter(notebook=False)
-p.add_volume(grid, scalars=rgba)
-p.show()
-```
-The display should look something like the below image
-![pyvista_img](./neural_canvas/assets/pyvista_example.png)
 
 We can also use Fiji (is not ImageJ) to render the 3D data, but this involves a plugin that I have not written yet, otherwise its a process that's easy to figure out with a little googling
 
