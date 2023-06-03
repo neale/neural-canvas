@@ -1,7 +1,4 @@
-import logging
 from abc import ABC, abstractmethod
-
-logging.getLogger().setLevel(logging.ERROR)
 
 
 class INRFBase(ABC):
@@ -33,8 +30,6 @@ class INRFBase(ABC):
         self.seed_gen = seed_gen
         self.map_fn = None
 
-        self.logger = logging.getLogger('INRF2Dlogger')
-        self.logger.setLevel(logging.INFO)
         self._init_random_seed(seed=seed)
         self._init_paths()
 

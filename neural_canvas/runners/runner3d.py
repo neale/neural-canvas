@@ -28,7 +28,7 @@ class RunnerINRF3D:
 
         Args:
             model: (INRF3D) model to use for generation
-            output_dir: (str) directory to save generated volumes to
+            output_dir: (str) directory to save generated volumes tocd ../
             save_verbose: (bool, optional) whether to save the volumes with verbose names
             skip_blank_generations: (bool, optional) whether to skip blank volumes
             colormaps: (list, optional) list of colormaps to use for generation

@@ -1,12 +1,13 @@
 import os
 import glob
+import numpy as np
 import torch
+import torch.nn as nn
 import logging 
 
-from neural_canvas.models.inr_maps_2d import *
-from neural_canvas.models.inr_maps_3d import *
-
-from neural_canvas.models.weight_inits import *
+import neural_canvas.models.inr_maps_2d as maps2d
+import neural_canvas.models.inr_maps_3d as maps3d
+import neural_canvas.models.weight_inits as weight_inits
 from neural_canvas.models.inrf_base import INRFBase
 from neural_canvas.utils.positional_encodings import coordinates_2D, coordinates_3D
 from neural_canvas.utils import unnormalize_and_numpy
@@ -140,15 +141,15 @@ class INRF2D(INRFBase):
     def init_map_weights(self):
         # initialize weights
         if self.weight_init == 'normal':
-            self.map_fn = init_weights_normal(
+            self.map_fn = weight_inits.init_weights_normal(
                 self.map_fn, self.weight_init_mean, self.weight_init_std)
         elif self.weight_init == 'uniform':
-            self.map_fn = init_weights_uniform(
+            self.map_fn = weight_inits.init_weights_uniform(
                 self.map_fn, self.weight_init_min, self.weight_init_max)
         elif self.weight_init == 'dip':
-            self.map_fn = init_weights_dip(self.map_fn)
+            self.map_fn = weight_inits.init_weights_dip(self.map_fn)
         elif self.weight_init == 'siren':
-            self.map_fn = init_weights_siren(self.map_fn)
+            self.map_fn = weight_inits.init_weights_siren(self.map_fn)
         else:
             self.logger.info(f'weight init `{self.weight_init}` not implemented')
 
@@ -188,25 +189,25 @@ class INRF2D(INRFBase):
             graph (torch.Tensor): networkx string representation of the graph
         """
         if graph_topology == 'simple':
-            map_fn = INRLSimpleLinearMap(
+            map_fn = maps2d.INRLSimpleLinearMap(
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
                 input_encoding_dim=input_encoding_dim,
                 activations=activations, final_activation=final_activation)
 
         elif graph_topology == 'mlp':
-            map_fn = INRLinearMap(
+            map_fn = maps2d.INRLinearMap(
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
                 input_encoding_dim=input_encoding_dim,
                 activations=activations, final_activation=final_activation)
 
         elif graph_topology == 'conv':
-            map_fn = INRConvMap(
+            map_fn = maps2d.INRConvMap(
                 self.latent_dim, self.c_dim, feature_dim=conv_feature_map_size,
                 input_encoding_dim=input_encoding_dim,
                 activations=activations, final_activation=final_activation)
             
         elif graph_topology == 'WS':
-            map_fn = INRRandomGraph(
+            map_fn = maps2d.INRRandomGraph(
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
                 input_encoding_dim=input_encoding_dim,
                 num_graph_nodes=num_graph_nodes, graph=graph,
@@ -587,15 +588,15 @@ class INRF3D(INRFBase):
     def init_map_weights(self):
         # initialize weights
         if self.weight_init == 'normal':
-            self.map_fn = init_weights_normal(
+            self.map_fn = weight_inits.init_weights_normal(
                 self.map_fn, self.weight_init_mean, self.weight_init_std)
         elif self.weight_init == 'uniform':
-            self.map_fn = init_weights_uniform(
+            self.map_fn = weight_inits.init_weights_uniform(
                 self.map_fn, self.weight_init_min, self.weight_init_max)
         elif self.weight_init == 'dip':
-            self.map_fn = init_weights_dip(self.map_fn)
+            self.map_fn = weight_inits.init_weights_dip(self.map_fn)
         elif self.weight_init == 'siren':
-            self.map_fn = init_weights_siren(self.map_fn)
+            self.map_fn = weight_inits.init_weights_siren(self.map_fn)
         else:
             self.logger.info(f'weight init `{self.weight_init}` not implemented')
 
@@ -635,17 +636,17 @@ class INRF3D(INRFBase):
             graph (torch.Tensor): networkx string representation of the graph
         """
         if graph_topology == 'mlp':
-            map_fn = INRLinearMap3D(
+            map_fn = maps3d.INRLinearMap3D(
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
                 activations=activations, final_activation=final_activation)
 
         elif graph_topology == 'conv':
-            map_fn = INRConvMap3D(
+            map_fn = maps3d.INRConvMap3D(
                 self.latent_dim, self.c_dim, self.latent_scale, feature_dim=conv_feature_map_size,
                 activations=activations, final_activation=final_activation)
             
         elif graph_topology == 'WS':
-            map_fn = INRRandomGraph3D(
+            map_fn = maps3d.INRRandomGraph3D(
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
                 num_graph_nodes=num_graph_nodes, graph=graph,
                 activations=activations, final_activation=final_activation)
