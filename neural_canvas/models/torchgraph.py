@@ -6,13 +6,13 @@ import numpy as np
 import networkx
 import collections
 
-from neural_canvas.models.ops import [
+from neural_canvas.models.ops import (
     ScaleAct
     AddAct
     Gaussian
     CosLayer
     SinLyaer
-]
+)
 
 
 Node = collections.namedtuple('Node', ['id', 'inputs', 'type'])
