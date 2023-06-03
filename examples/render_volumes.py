@@ -15,18 +15,18 @@ from dask_image.imread import imread
 import logging
 logging.getLogger('PIL').setLevel(logging.WARNING)
 logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
-import vtk
 
 
-#def TF(volume):
-#    grads = np.gradient(volume) 
-#    grads = np.stack(grads, 0)
-#    opacity = np.linalg.norm(grads[:3], axis=0).mean(-1, keepdims=True)  # [N, N, N]
-#    return opacity
-
-def TF(volume, grads=None, grad_dim=None, grad_reduction='norm', rgb_reduction='mean'):
+def TFgrad(volume, grads=None, grad_dim=None, grad_reduction='norm', rgb_reduction='mean'):
+    """Computes a transfer function that highlights the internal structure of the volume
+        This is achieved by considering the gradients of the volume values.
+        Generally, we want to focus on areas with large gradients as those contribute to structure
+        similar to sobel filters used for edge detection. 
+        This transfer function modules the opacity of the volume based on the gradient magnitude
+        and some function of the RGB values. 
+    """
     if grads is None:
-        grads = np.gradient(volume)
+        grads = np.gradient(volume)  
     if grad_dim is not None:
         grads = grads[grad_dim]
     else:
@@ -48,6 +48,7 @@ def TF(volume, grads=None, grad_dim=None, grad_reduction='norm', rgb_reduction='
 
 
 def render_options(volume):
+    """view a number of options for gradient based transfer functions"""
     theme = DefaultTheme()
     theme.background = 'black'
     pv.global_theme.load_theme(theme)
@@ -72,8 +73,7 @@ def render_options(volume):
     grads = np.gradient(volume)  # [3, N, N, N, 3]
     grads = np.stack(grads, 0)
     p.subplot(0, 1)
-    opacity = TF(volume, grads, grad_dim=None, grad_reduction='mean', rgb_reduction='norm')
-    #opacity = np.linalg.norm(grads[:3].mean(0), axis=-1, keepdims=True)  # [N, N, N]
+    opacity = TFgrad(volume, grads, grad_dim=None, grad_reduction='mean', rgb_reduction='norm')
     rgba = np.concatenate((volume, opacity), -1).reshape(-1, 4).astype(np.uint8)
     p.add_volume(grid,
                  scalars=rgba, 
@@ -85,8 +85,7 @@ def render_options(volume):
     p.add_text('RGB Norm, Mean GradXYZ', font_size=10)
 
     p.subplot(0, 2)
-    opacity = TF(volume, grads, grad_dim=0, grad_reduction=None, rgb_reduction='mean')
-    #opacity = grads[0].mean(-1, keepdims=True)  # [N, N, N, 1]
+    opacity = TFgrad(volume, grads, grad_dim=0, grad_reduction=None, rgb_reduction='mean')
     rgba = np.concatenate((volume, opacity), -1).reshape(-1, 4).astype(np.uint8)
     p.add_volume(grid,
                  scalars=rgba,
@@ -98,8 +97,7 @@ def render_options(volume):
     p.add_text('RGB Mean GradX', font_size=10)
 
     p.subplot(0, 3)
-    opacity = TF(volume, grads, grad_dim=1, grad_reduction=None, rgb_reduction='mean')
-    #opacity = grads[1].mean(-1, keepdims=True)
+    opacity = TFgrad(volume, grads, grad_dim=1, grad_reduction=None, rgb_reduction='mean')
     rgba = np.concatenate((volume, opacity), -1).reshape(-1, 4).astype(np.uint8)
     p.add_volume(grid,
                  scalars=rgba,
@@ -111,8 +109,7 @@ def render_options(volume):
     p.add_text('RGB Mean GradY', font_size=10)
 
     p.subplot(0, 4)
-    opacity = TF(volume, grads, grad_dim=2, grad_reduction=None, rgb_reduction='mean')
-    #opacity = grads[2].mean(-1, keepdims=True)
+    opacity = TFgrad(volume, grads, grad_dim=2, grad_reduction=None, rgb_reduction='mean')
     rgba = np.concatenate((volume, opacity), -1).reshape(-1, 4).astype(np.uint8)
     p.add_volume(grid,
                  scalars=rgba,
@@ -124,8 +121,7 @@ def render_options(volume):
     p.add_text('RGB Mean GradZ', font_size=10)
 
     p.subplot(0, 5)
-    opacity = TF(volume, grads, grad_dim=None, grad_reduction='sum', rgb_reduction='mean')
-    #opacity = grads[:3].mean(-1, keepdims=True).sum(0)
+    opacity = TFgrad(volume, grads, grad_dim=None, grad_reduction='sum', rgb_reduction='mean')
     rgba = np.concatenate((volume, opacity), -1).reshape(-1, 4).astype(np.uint8)
     p.add_volume(grid,
                  scalars=rgba,
@@ -149,8 +145,7 @@ def render_options(volume):
     p.add_text('Linear TF', font_size=10)
 
     p.subplot(1, 1)
-    opacity = TF(volume, grads, grad_dim=None, grad_reduction='norm', rgb_reduction='mean')    
-    #opacity = np.linalg.norm(grads[:3], axis=0).mean(-1, keepdims=True)  # [N, N, N]
+    opacity = TFgrad(volume, grads, grad_dim=None, grad_reduction='norm', rgb_reduction='mean')    
     rgba = np.concatenate((volume, opacity), -1).reshape(-1, 4).astype(np.uint8)
     p.add_volume(grid,
                  scalars=rgba,
@@ -162,8 +157,7 @@ def render_options(volume):
     p.add_text('RGB Mean, GradXYZ norm', font_size=10)
 
     p.subplot(1, 2)
-    opacity = TF(volume, grads, grad_dim=0, grad_reduction=None, rgb_reduction='norm')
-    #opacity = np.linalg.norm(grads[0], axis=-1, keepdims=True)
+    opacity = TFgrad(volume, grads, grad_dim=0, grad_reduction=None, rgb_reduction='norm')
     rgba = np.concatenate((volume, opacity), -1).reshape(-1, 4).astype(np.uint8)
     p.add_volume(grid,
                  scalars=rgba,
@@ -175,8 +169,7 @@ def render_options(volume):
     p.add_text('RGB Norm, GradX', font_size=10)
 
     p.subplot(1, 3)
-    opacity = TF(volume, grads, grad_dim=1, grad_reduction=None, rgb_reduction='norm')
-    #opacity = np.linalg.norm(grads[1], axis=-1, keepdims=True)
+    opacity = TFgrad(volume, grads, grad_dim=1, grad_reduction=None, rgb_reduction='norm')
     rgba = np.concatenate((volume, opacity), -1).reshape(-1, 4).astype(np.uint8)
     p.add_volume(grid,
                  scalars=rgba,
@@ -188,8 +181,7 @@ def render_options(volume):
     p.add_text('RGB Norm, GradY', font_size=10)
 
     p.subplot(1, 4)
-    opacity = TF(volume, grads, grad_dim=2, grad_reduction=None, rgb_reduction='norm')
-    #opacity = np.linalg.norm(grads[2], axis=-1, keepdims=True)
+    opacity = TFgrad(volume, grads, grad_dim=2, grad_reduction=None, rgb_reduction='norm')
     rgba = np.concatenate((volume, opacity), -1).reshape(-1, 4).astype(np.uint8)
     p.add_volume(grid,
                  scalars=rgba,
@@ -200,14 +192,12 @@ def render_options(volume):
                  shade=False)
     p.add_text('RGB Norm, GradZ', font_size=10)
     p.subplot(1, 5)
-    opacity = TF(volume, grads, grad_dim=None, grad_reduction='sum', rgb_reduction='norm')
-    #opacity = np.linalg.norm(grads[:3].sum(0), axis=-1, keepdims=True)
+    opacity = TFgrad(volume, grads, grad_dim=None, grad_reduction='sum', rgb_reduction='norm')
     rgba = np.concatenate((volume, opacity), -1).reshape(-1, 4).astype(np.uint8)
     p.add_volume(grid,
                  scalars=rgba,
                  ambient=1.0,
-                 mapper="fixed_point",
-                 #mapper="smart",
+                 mapper="smart",
                  diffuse=.5,
                  blending='composite',
                  shade=False)
@@ -216,6 +206,7 @@ def render_options(volume):
 
 
 def render(volume, path):
+    """render volume with pyvista"""
     theme = DefaultTheme()
     theme.background = 'black'
     pv.global_theme.load_theme(theme)
@@ -225,16 +216,16 @@ def render(volume, path):
                    multi_samples=8,
                    line_smoothing=True,
                    polygon_smoothing=True,)
-    opacity = TF(volume)
+    
+    opacity = TFgrad(volume)
     rgba = np.concatenate((volume, opacity), -1).reshape(-1, 4).astype(np.uint8)
     p.add_volume(grid,
                  scalars=rgba,
                  ambient=1.0,
-                 mapper="open_gl",#smart",
+                 mapper="smart",
                  diffuse=.5,
                  blending='composite',
                  shade=False)
-    save_fn = path[:-4]
     p.show()
 
 

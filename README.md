@@ -207,6 +207,7 @@ WIP
 ## Contributions
 
 Contributions are welcome! If you would like to contribute, please fork the project on GitHub and submit a pull request with your changes.
+
 ### Dependency Management
 
 This project uses [Poetry](https://python-poetry.org/) to do environment management. If you want to develop on this project, the best first start is to use Poetry from the beginning. 
@@ -215,17 +216,6 @@ To install dependencies (including dev dependencies!) with Poetry:
 ```bash
 poetry shell && poetry install 
 ```
-You should now be able to run any and all code within the `dev` branch(es). 
-
-### Linting
-
-We primarily use [Black](https://black.readthedocs.io/en/stable/) for linting because it removes a lot of my strong opinions on the way code should look byu forcing everyone to adhere to a style we all partially agree on. 
-
-To run the linter:
-```bash
-make lint
-```
-We will probably request that code by linted before a merged PR, but its not a critical thing.  
 
 ## License
 
