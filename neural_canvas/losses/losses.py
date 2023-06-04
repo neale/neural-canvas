@@ -106,7 +106,7 @@ class LossModule(nn.Module):
         if self.use_l2_loss:
             loss += self.l2_alpha * l2_loss(x, y)
         if self.use_ssim_loss:
-            loss += self.ssim_alpha * ssim_loss(x, y)
+            loss += self.ssim_alpha * ssim_loss(x.unsqueeze(0), y.unsqueeze(0))
         if self.use_embedding_loss:
             loss += self.embedding_alpha * embedding_loss(x)
         return loss

@@ -451,6 +451,7 @@ class INRF2D(INRFBase):
 
         if loss is None:
             loss = nn.L1Loss()
+
         if optimizer is None:
             optimizer = torch.optim.AdamW(
                 self.map_fn.parameters(), lr=5e-3, weight_decay=1e-5)
@@ -458,7 +459,7 @@ class INRF2D(INRFBase):
         if self.fourier_encoding is not None:
             fields['coords'] = self.fourier_encoding(fields['coords'])
             test_fields['coords'] = self.fourier_encoding(test_fields['coords'])
-            
+
         target = target.unsqueeze(0)
         for it in range(n_iters):
             optimizer.zero_grad()

@@ -86,6 +86,7 @@ plt.show()
 ##
 ##
 from neural_canvas.utils import load_image_as_tensor
+from neural_canvas.losses import LossModule
 
 img = load_image_as_tensor('neural_canvas/assets/logo.jpg')[0]
 model = INRF2D(device='cpu') # or 'cuda'
@@ -95,7 +96,7 @@ model.init_map_fn(activations='GELU',
                   final_activation='tanh',
                   num_fourier_freqs=4,
                   input_encoding_dim=8) # better params for fitting
-
+loss = LossModule(l1_alpha=1.0, ssim_alpha=1.0)
 model.fit(img, n_iters=500)  # returns a implicit neural representation of the image
 
 print ('INRF size', model.size)  # return size of neural representation

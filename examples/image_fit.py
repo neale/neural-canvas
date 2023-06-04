@@ -148,8 +148,6 @@ if __name__ == '__main__':
                                num_iters_per_epoch=args.num_iters_per_epoch,
                                lr=args.lr,
                                weight_decay=args.weight_decay,
-                               use_fourier_encoding=args.fourier_encoding,
-                               num_freqs=args.num_freqs_encoding,
                                device=device,)
         
         img_name = path.split('/')[-1][:-4]
