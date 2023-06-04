@@ -96,8 +96,8 @@ model.init_map_fn(activations='GELU',
                   final_activation='tanh',
                   num_fourier_freqs=4,
                   input_encoding_dim=8) # better params for fitting
-loss = LossModule(l1_alpha=1.0, ssim_alpha=1.0)
-model.fit(img, n_iters=500)  # returns a implicit neural representation of the image
+loss = LossModule(l1_alpha=1.0)
+model.fit(img, loss=loss, n_iters=500)  # returns a implicit neural representation of the image
 
 print ('INRF size', model.size)  # return size of neural representation
 # >> 30083

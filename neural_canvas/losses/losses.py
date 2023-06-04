@@ -44,13 +44,12 @@ def ssim_loss(x, y, multiscale=True):
     assert x.shape[1] == 3 or x.shape[1] == 1, f'x and y must have {3, 1} channels, got {x.shape[1]}'
     assert y.shape[1] == 3 or y.shape[1] == 1, f'x and y must have {3, 1} channels, got {y.shape[1]}'
     if multiscale:
-        loss = ms_ssim(x.permute(0, 2, 3, 1),
-                       y.permute(0, 2, 3, 1),
-                       data_range=1, size_average=False)
+        try:
+            loss = ms_ssim(x, y, data_range=1, size_average=True)
+        except AssertionError:
+            loss = ssim(x, y, data_range=1, size_average=True)    
     else:
-        loss = ssim(x.permute(0, 2, 3, 1),
-                    y.permute(0, 2, 3, 1),
-                    data_range=1, size_average=False)    
+        loss = ssim(x, y, data_range=1, size_average=True)    
     return loss
 
 
@@ -106,7 +105,7 @@ class LossModule(nn.Module):
         if self.use_l2_loss:
             loss += self.l2_alpha * l2_loss(x, y)
         if self.use_ssim_loss:
-            loss += self.ssim_alpha * ssim_loss(x.unsqueeze(0), y.unsqueeze(0))
+            loss += self.ssim_alpha * ssim_loss(x, y)
         if self.use_embedding_loss:
             loss += self.embedding_alpha * embedding_loss(x)
         return loss
