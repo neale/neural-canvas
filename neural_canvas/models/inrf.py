@@ -270,7 +270,7 @@ class INRF2D(INRFBase):
                                     scale=self.latent_scale,
                                     as_mat=True)
             coords = torch.stack(coords, 0).unsqueeze(0).repeat(batch_size, 1, 1, 1)
-        fields = {'coords': coords,
+        fields = {'coords': coords.to(self.device),
                   'shape': (batch_size, x_dim, y_dim),
                   'zoom': zoom, 
                   'pan': pan}

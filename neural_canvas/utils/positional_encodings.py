@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import numpy as np
 import scipy.stats as stats
-from sklearn.datasets import make_blobs
 
 
 def coordinates_2D(x_dim, y_dim, batch_size, zoom, pan, scale, as_mat=False):
@@ -44,29 +43,6 @@ def coordinates_3D(x_dim, y_dim, z_dim, batch_size, zoom, pan, scale, as_mat=Fal
     
     return x_vec, y_vec, z_vec, r_vec
 
-"""
-def mixture_2D(x_dim, y_dim, device):
-    n_components = 3
-    X, truth = make_blobs(
-        n_samples=100,
-        centers=n_components, 
-        cluster_std=np.random.randint(1, 5, size=(n_components,)))
-    x = X[:, 0]
-    y = X[:, 1]# Define the borders
-    deltaX = (max(x) - min(x))/10
-    deltaY = (max(y) - min(y))/10
-    xmin = min(x) - deltaX
-    xmax = max(x) + deltaX
-    ymin = min(y) - deltaY
-    ymax = max(y) + deltaY
-    xx, yy = np.mgrid[xmin:xmax:complex(0,x_dim), ymin:ymax:complex(0,y_dim)]
-    positions = np.vstack([xx.ravel(), yy.ravel()])
-    values = np.vstack([x, y])
-    kernel = stats.gaussian_kde(values)
-    xy_mat = np.reshape(kernel(positions).T, xx.shape)
-    xy_mat = torch.from_numpy(xy_mat).float().to(device)
-    return xy_mat
-"""
 
 class FourierEncoding(nn.Module):
     # instatiate for all components of the input parameterizations
