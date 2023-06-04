@@ -3,9 +3,9 @@ import torch.nn as nn
 import networkx
 
 from neural_canvas.models.ops import (
-    ScaleAct
-    Gaussian
-    SinLyaer
+    ScaleAct,
+    Gaussian,
+    SinLayer,
     CosLayer
 )
 from neural_canvas.models.torchgraph import randact, build_random_graph, TorchGraph

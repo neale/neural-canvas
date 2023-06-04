@@ -155,7 +155,7 @@ class INRF2D(INRFBase):
 
     def init_map_fn(self,
                     mlp_layer_width=32,
-                    conv_feature_map_size=64,
+                    conv_feature_map_size=32,
                     input_encoding_dim=1,
                     activations='fixed',
                     final_activation='sigmoid',
@@ -391,7 +391,7 @@ class INRF2D(INRFBase):
         #if unnormalize_output:
         #    frame = unnormalize_and_numpy(frame, self.map_fn.final_activation)
         self.logger.debug(f'Output Frame Shape: {frame.shape}')
-        return (frame*255).numpy().astype(np.uint8)
+        return unnormalize_and_numpy(frame)
 
     def fit(self,
             target,
@@ -800,7 +800,6 @@ class INRF3D(INRFBase):
             if self.graph_topology in ['mlp', 'WS']:
                 fields = fields.reshape(batch_size, fields.shape[1], -1)
                 fields = fields.transpose(0, 2)
-                print (fields.shape, latent.shape)
             volume = self.map_fn(fields, latent)
         elif splits > 1:
             assert n_pts % splits == 0, 'number of splits must be divisible by number of points'

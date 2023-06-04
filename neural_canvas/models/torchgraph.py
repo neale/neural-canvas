@@ -7,11 +7,11 @@ import networkx
 import collections
 
 from neural_canvas.models.ops import (
-    ScaleAct
-    AddAct
-    Gaussian
-    CosLayer
-    SinLyaer
+    ScaleAct,
+    AddAct,
+    Gaussian,
+    CosLayer,
+    SinLayer
 )
 
 
