@@ -115,6 +115,7 @@ if __name__ == '__main__':
             input_freqs_encoding = 2 * args.num_freqs_encoding
         else:
             input_freqs_encoding = 1
+
         generator.init_map_fn(mlp_layer_width=args.mlp_layer_width,
                               conv_feature_map_size=args.conv_feature_map_size,
                               input_encoding_dim=input_freqs_encoding,
@@ -126,7 +127,8 @@ if __name__ == '__main__':
                               weight_init_mean=args.weight_init_mean,
                               weight_init_std=args.weight_init_std,
                               weight_init_min=args.weight_init_min,
-                              weight_init_max=args.weight_init_max,)
+                              weight_init_max=args.weight_init_max,
+                              num_fourier_freqs=args.num_freqs_encoding,)
 
         
         runner = runner2d.RunnerINRF2D(model=generator,

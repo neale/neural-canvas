@@ -3,10 +3,10 @@ import tqdm
 import glob
 import shutil
 
-import numpy as np
 import torch
 import logging
 import warnings
+import numpy as np
 
 from neural_canvas.utils import utils
 from neural_canvas.utils.positional_encodings import FourierEncoding
@@ -226,10 +226,7 @@ class RunnerINRF2D:
             num_iters_per_epoch=100,
             lr=1e-3,
             weight_decay=1e-5,
-            use_fourier_encoding=False,
-            num_freqs=5,
-            write_outputs=False,
-            device='cpu'):
+            write_outputs=False):
         """fits model to target image
         Args:
             target: (torch.Tensor) target image
@@ -239,6 +236,7 @@ class RunnerINRF2D:
             n_iters_per_epoch: (int, optional) number of iterations per epoch
             lr: (float, optional) learning rate
             weight_decay: (float, optional) weight decay
+            write_outputs: (bool, optional) whether to write outputs to disk
         """
         warnings.warn('Fitting on CPU, will be slow')
         assert self.model is not None, 'Must initialize model before fitting'
@@ -257,11 +255,6 @@ class RunnerINRF2D:
         
         test_latents = self.model.sample_latents(output_shape=output_shape[:-1])
         test_fields = self.model.construct_fields(output_shape=output_shape[:-1])
-
-        if use_fourier_encoding:
-            input_encoding = FourierEncoding(num_freqs).to(device)
-            fields['coords'] = input_encoding(fields['coords'])
-            test_fields['coords'] = input_encoding(test_fields['coords'])
 
         loss_vals = []
         for epoch in epoch_iterator:

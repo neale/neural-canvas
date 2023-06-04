@@ -92,9 +92,11 @@ model = INRF2D(device='cpu') # or 'cuda'
 model.init_map_fn(activations='GELU',
                   weight_init='dip', 
                   graph_topology='conv', 
-                  final_activation='tanh') # better params for fitting
+                  final_activation='tanh',
+                  num_fourier_freqs=4,
+                  input_encoding_dim=8) # better params for fitting
 
-model.fit(img)  # returns a implicit neural representation of the image
+model.fit(img, n_iters=500)  # returns a implicit neural representation of the image
 
 print ('INRF size', model.size)  # return size of neural representation
 # >> 30083

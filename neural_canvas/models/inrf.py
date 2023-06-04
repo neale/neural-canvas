@@ -11,6 +11,7 @@ import neural_canvas.models.weight_inits as weight_inits
 from neural_canvas.models.inrf_base import INRFBase
 from neural_canvas.utils.positional_encodings import coordinates_2D, coordinates_3D
 from neural_canvas.utils import unnormalize_and_numpy
+from neural_canvas.utils.positional_encodings import FourierEncoding
 
 
 logging.getLogger().setLevel(logging.ERROR)
@@ -166,6 +167,7 @@ class INRF2D(INRFBase):
                     weight_init_std=1,
                     weight_init_min=-2,
                     weight_init_max=2,
+                    num_fourier_freqs=None,
                     graph=None):
         """
         initializes the forward map function of the implicit neural representation
@@ -186,6 +188,8 @@ class INRF2D(INRFBase):
             weight_init_std (float): standard deviation of the weight initialization
             weight_init_min (float): minimum value of the weight initialization
             weight_init_max (float): maximum value of the weight initialization
+            num_fourier_freqs (int, Optional): number of fourier frequencies to use in
+                the input encoding
             graph (torch.Tensor): networkx string representation of the graph
         """
         if graph_topology == 'simple':
@@ -214,6 +218,12 @@ class INRF2D(INRFBase):
                 activations=activations, final_activation=final_activation)
         else:
             raise NotImplementedError(f'Graph topology `{graph_topology}` not implemented')
+        
+        if num_fourier_freqs is not None:
+            self.fourier_encoding = FourierEncoding(num_fourier_freqs).to(self.device)
+        else:
+            self.fourier_encoding = None
+
         # initialize weights
         self.mlp_layer_width = mlp_layer_width
         self.conv_feature_map_size = conv_feature_map_size
@@ -311,7 +321,7 @@ class INRF2D(INRFBase):
                  output_shape=None,
                  splits=1,
                  sample_latent=False,
-                 unnormalize_output=True):
+                 num_fourier_freqs=None):
         """
         samples from the forward map
         Args:
@@ -324,7 +334,8 @@ class INRF2D(INRFBase):
                 (`self.x_dim`, `self.y_dim`, self.z_dim`)
             splits (int): number of splits to use for sampling. Used to reduce memory usage
             sample_latent (bool): whether to sample random latent inputs
-            unnormalize_output (bool): whether to unnormalize the output
+            num_fourier_freqs (int, Optional): if provided, then the latent inputs are fourier encoded 
+                with the provided number of frequencies
         Returns:
             frame (torch tensor): sampled frame
         """
@@ -334,7 +345,6 @@ class INRF2D(INRFBase):
             if latents is None:
                 if sample_latent:
                     latents = self.sample_latents(output_shape=fields['shape'])                
-
         else: 
             if fields is None:
                 fields = self.construct_fields(output_shape=output_shape)
@@ -354,6 +364,9 @@ class INRF2D(INRFBase):
                 latent = torch.split(latent, latent.shape[0]//splits, dim=0)
         else:
             latent = None
+
+        if self.fourier_encoding is not None:
+            fields['coords'] = self.fourier_encoding(fields['coords'])
 
         field = fields['coords']  # [B, NF, H, W]
         if self.graph_topology in['mlp', 'WS', 'simple']:
@@ -388,8 +401,7 @@ class INRF2D(INRFBase):
             frame = frame.reshape(output_shape)
         elif self.graph_topology == 'conv':
             frame = frame.permute(0, 2, 3, 1) # [B, C, H, W] -> [B, H, W, C]
-        #if unnormalize_output:
-        #    frame = unnormalize_and_numpy(frame, self.map_fn.final_activation)
+
         self.logger.debug(f'Output Frame Shape: {frame.shape}')
         return unnormalize_and_numpy(frame)
 
@@ -442,7 +454,11 @@ class INRF2D(INRFBase):
         if optimizer is None:
             optimizer = torch.optim.AdamW(
                 self.map_fn.parameters(), lr=5e-3, weight_decay=1e-5)
-
+            
+        if self.fourier_encoding is not None:
+            fields['coords'] = self.fourier_encoding(fields['coords'])
+            test_fields['coords'] = self.fourier_encoding(test_fields['coords'])
+            
         target = target.unsqueeze(0)
         for it in range(n_iters):
             optimizer.zero_grad()
