@@ -228,6 +228,7 @@ class RunnerINRF2D:
             weight_decay=1e-5,
             use_fourier_encoding=False,
             num_freqs=5,
+            write_outputs=False,
             device='cpu'):
         """fits model to target image
         Args:
@@ -241,6 +242,7 @@ class RunnerINRF2D:
         """
         warnings.warn('Fitting on CPU, will be slow')
         assert self.model is not None, 'Must initialize model before fitting'
+        assert target.ndim == 4, 'Target must be 4D tensor'
         optimizer = torch.optim.AdamW(self.model.map_fn.parameters(), 
                                       lr=lr,
                                       weight_decay=weight_decay,
@@ -258,8 +260,8 @@ class RunnerINRF2D:
 
         if use_fourier_encoding:
             input_encoding = FourierEncoding(num_freqs).to(device)
-            fields = input_encoding(fields)
-            test_fields = input_encoding(test_fields)
+            fields['coords'] = input_encoding(fields['coords'])
+            test_fields['coords'] = input_encoding(test_fields['coords'])
 
         loss_vals = []
         for epoch in epoch_iterator:
@@ -274,21 +276,21 @@ class RunnerINRF2D:
             epoch_iterator.set_description(f'Epoch: {epoch}, Loss: {loss_val:.4f}')
             loss_vals.append(loss_val.item())
 
-            if frame.ndim == 4 and frame.shape[0] == 1:
-                frame = frame[0]
-            if test_frame.ndim == 4 and test_frame.shape[0] == 1:
-                test_frame = test_frame[0]
-
-            metadata = self.model._metadata(latent=latents)
-            test_metadata = self.model._metadata(latent=test_latents)
-            utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=frame, 
-                suffix='png')
-            utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=frame, 
-                suffix='tif', metadata=metadata)
-            utils.write_image(path=f'{self.output_dir}/fit_{epoch}_test', img=test_frame, 
-                suffix='png')
-            utils.write_image(path=f'{self.output_dir}/fit_{epoch}_test', img=test_frame, 
-                suffix='tif', metadata=test_metadata)
+            if write_outputs:
+                if frame.ndim == 4 and frame.shape[0] == 1:
+                    frame = frame[0]
+                if test_frame.ndim == 4 and test_frame.shape[0] == 1:
+                    test_frame = test_frame[0]
+                metadata = self.model._metadata(latent=latents)
+                test_metadata = self.model._metadata(latent=test_latents)
+                utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=frame, 
+                    suffix='png')
+                utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=frame, 
+                    suffix='tif', metadata=metadata)
+                utils.write_image(path=f'{self.output_dir}/fit_{epoch}_test', img=test_frame, 
+                    suffix='png')
+                utils.write_image(path=f'{self.output_dir}/fit_{epoch}_test', img=test_frame, 
+                    suffix='tif', metadata=test_metadata)
         self.logger.info(f'Finished fitting model')
         return loss_vals
 
