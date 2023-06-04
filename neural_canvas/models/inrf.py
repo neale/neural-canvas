@@ -239,6 +239,7 @@ class INRF2D(INRFBase):
         self.weight_init_min = weight_init_min
         self.weight_init_max = weight_init_max
 
+        self.map_fn = map_fn
         self.init_map_weights()
 
     def construct_fields(self,
