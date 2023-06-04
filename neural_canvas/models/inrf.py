@@ -153,6 +153,7 @@ class INRF2D(INRFBase):
             self.map_fn = weight_inits.init_weights_siren(self.map_fn)
         else:
             self.logger.info(f'weight init `{self.weight_init}` not implemented')
+        self.map_fn = self.map_fn.to(self.device)
 
     def init_map_fn(self,
                     mlp_layer_width=32,
@@ -238,7 +239,6 @@ class INRF2D(INRFBase):
         self.weight_init_min = weight_init_min
         self.weight_init_max = weight_init_max
 
-        self.map_fn = map_fn.to(self.device)
         self.init_map_weights()
 
     def construct_fields(self,
