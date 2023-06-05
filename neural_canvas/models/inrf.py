@@ -404,7 +404,7 @@ class INRF2D(INRFBase):
             frame = frame.permute(0, 2, 3, 1) # [B, C, H, W] -> [B, H, W, C]
 
         self.logger.debug(f'Output Frame Shape: {frame.shape}')
-        return unnormalize_and_numpy(frame)
+        return unnormalize_and_numpy(frame, output_activation=self.final_activation)
 
     def fit(self,
             target,
