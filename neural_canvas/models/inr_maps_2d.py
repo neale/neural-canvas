@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
 import networkx
+from einops import rearrange
 
 from neural_canvas.models.ops import (
     ScaleAct,
     Gaussian,
     SinLayer,
-    CosLayer
+    CosLayer,
 )
 from neural_canvas.models.torchgraph import randact, build_random_graph, TorchGraph
 
@@ -337,6 +338,72 @@ class INRConvMap(nn.Module):
         x = self.acts[7](self.norms[7](self.conv8(x)))
         x = self.act_out(self.conv_rgb(x))
         return x
+    
+
+class SIREN(nn.Module):
+    def __init__(self,
+                 latent_dim,
+                 c_dim,
+                 layer_width,
+                 input_encoding_dim,
+                 num_layers=8,
+                 final_activation='sigmoid',
+                 bias=True,
+                 scale=1.0,
+                 scale_init=30.0,
+                 name='SIRENmap'):
+        super(SIREN, self).__init__()
+        self.latent_dim = latent_dim
+        self.c_dim = c_dim
+        self.layer_width = layer_width
+        self.input_encoding_dim = input_encoding_dim * 3
+        self.final_activation = final_activation
+        self.name = name
+        
+        self.final_layer = nn.Linear(self.layer_width, self.c_dim, bias=bias)
+        self.layers = nn.ModuleList([nn.Linear(self.input_encoding_dim, self.layer_width, bias=bias)])
+        self.acts = nn.ModuleList([SinLayer(scale_init)] + [SinLayer(scale) for _ in range(num_layers)])
+
+        for _ in range(num_layers-1):
+            self.layers.append(nn.Linear(self.layer_width, self.layer_width, bias=bias))
+
+        if latent_dim > 0:
+            self.latent_maps = nn.ModuleList([nn.Linear(self.latent_dim, self.layer_width, bias=bias)])
+            for _ in range(num_layers-1):
+                self.latent_maps.append(nn.Linear(self.layer_width+self.latent_dim,
+                                                  self.layer_width,
+                                                  bias=bias))
+            self.latent_acts = nn.ModuleList([nn.ELU() for _ in range(num_layers)])
+        
+        if final_activation == 'tanh':
+            self.act_out = torch.tanh
+        elif final_activation == 'sigmoid':
+            self.act_out = torch.sigmoid
+        elif final_activation is None:
+            self.act_out = nn.Identity()
+
+    def forward(self, fields, latents=None):
+        #print (fields.shape)
+        #fields = fields[:, :2]
+        latents = None
+        x = fields # rearrange(fields, 'b c h w -> (b h w) c')
+        if x.ndim == 3:
+            x = x.squeeze(-1)
+        
+        if latents is not None:
+            zs = []
+            for act, layer in zip(self.latent_maps, self.latent_acts):
+                z = act(layer(z))
+                zs.append(z)
+                z = torch.cat((z, latents.squeeze(1)), dim=1)
+        else:
+            zs = [1.0 for _ in range(len(self.layers))]
+
+        for act, layer, z in zip(self.acts, self.layers, zs):
+            x = act(layer(x))
+            x = x * z
+        x_out = self.act_out(self.final_layer(x))
+        return x_out
     
 
 if __name__ == '__main__':

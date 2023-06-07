@@ -150,7 +150,7 @@ class INRF2D(INRFBase):
         elif self.weight_init == 'dip':
             self.map_fn = weight_inits.init_weights_dip(self.map_fn)
         elif self.weight_init == 'siren':
-            self.map_fn = weight_inits.init_weights_siren(self.map_fn)
+            self.map_fn = weight_inits.init_weights_siren(self.map_fn, self.siren_scale_init, self.siren_scale)
         else:
             self.logger.info(f'weight init `{self.weight_init}` not implemented')
         self.map_fn = self.map_fn.to(self.device)
@@ -169,6 +169,9 @@ class INRF2D(INRFBase):
                     weight_init_min=-2,
                     weight_init_max=2,
                     num_fourier_freqs=None,
+                    num_siren_layers=5,
+                    siren_scale=1.0,
+                    siren_scale_init=30.0,
                     graph=None):
         """
         initializes the forward map function of the implicit neural representation
@@ -191,6 +194,9 @@ class INRF2D(INRFBase):
             weight_init_max (float): maximum value of the weight initialization
             num_fourier_freqs (int, Optional): number of fourier frequencies to use in
                 the input encoding
+            num_siren_layers (int, Optional): number of siren layers to use in the input encoding
+            siren_scale (float, Optional): scale of the siren layers
+            siren_scale_init (float, Optional): scale of the siren layers at the first layer
             graph (torch.Tensor): networkx string representation of the graph
         """
         if graph_topology == 'simple':
@@ -217,6 +223,11 @@ class INRF2D(INRFBase):
                 input_encoding_dim=input_encoding_dim,
                 num_graph_nodes=num_graph_nodes, graph=graph,
                 activations=activations, final_activation=final_activation)
+        elif graph_topology == 'siren':
+            map_fn = maps2d.SIREN(
+                self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
+                input_encoding_dim=input_encoding_dim, num_layers=num_siren_layers,
+                scale=siren_scale, scale_init=siren_scale_init, final_activation=final_activation)
         else:
             raise NotImplementedError(f'Graph topology `{graph_topology}` not implemented')
         
@@ -238,6 +249,9 @@ class INRF2D(INRFBase):
         self.weight_init_std = weight_init_std
         self.weight_init_min = weight_init_min
         self.weight_init_max = weight_init_max
+        self.num_siren_layers = num_siren_layers
+        self.siren_scale = siren_scale
+        self.siren_scale_init = siren_scale_init
 
         self.map_fn = map_fn
         self.init_map_weights()
@@ -321,8 +335,7 @@ class INRF2D(INRFBase):
                  fields=None,
                  output_shape=None,
                  splits=1,
-                 sample_latent=False,
-                 num_fourier_freqs=None):
+                 sample_latent=False):
         """
         samples from the forward map
         Args:
@@ -357,12 +370,15 @@ class INRF2D(INRFBase):
                 latents = self.sample_latents(output_shape=output_shape)
 
         output_shape = fields['shape'] + (self.c_dim,)
+
         if latents is not None:
             latent = latents['input']
             if self.graph_topology in['mlp', 'WS', 'simple']:
                 latent = latent.reshape(-1, self.latent_dim)
             if splits > 1:
                 latent = torch.split(latent, latent.shape[0]//splits, dim=0)
+            if self.graph_topology == 'siren':  # siren handles latent codes differently
+                latent = latents['sample']
         else:
             latent = None
 
@@ -370,16 +386,21 @@ class INRF2D(INRFBase):
             fields['coords'] = self.fourier_encoding(fields['coords'])
 
         field = fields['coords']  # [B, NF, H, W]
-        if self.graph_topology in['mlp', 'WS', 'simple']:
+        if self.graph_topology in['mlp', 'WS', 'simple', 'siren']:
             field = field.reshape(1, field.shape[1], -1)
             field = field.permute(2, 1, 0)
+
+        # generate
         if splits == 1:
             frame = self.map_fn(field, latent)
         elif splits > 1:
             field = torch.split(field, field.shape[0]//splits, dim=0)
             for i in range(splits):
                 if latent is not None:
-                    l_i = latent[i]
+                    if self.graph_topology == 'siren':
+                        l_i = latents['sample']
+                    else:
+                        l_i = latent[i]
                 else:
                     l_i = None
                 f = self.map_fn(field[i], l_i)
@@ -398,8 +419,12 @@ class INRF2D(INRFBase):
         else:
             raise ValueError(f'splits must be >= 1, got {splits}')
 
-        if self.graph_topology in ['mlp', 'WS', 'simple']:
+        print (f'Output Frame Shape: {frame.shape}, {output_shape}')
+        if self.graph_topology in ['mlp', 'WS', 'simple']:#, 'siren']:
             frame = frame.reshape(output_shape)
+        elif self.graph_topology == 'siren':
+            frame = frame.reshape(-1, self.c_dim, *fields['shape'][1:])
+            frame = frame.permute(0, 2, 3, 1)
         elif self.graph_topology == 'conv':
             frame = frame.permute(0, 2, 3, 1) # [B, C, H, W] -> [B, H, W, C]
 
@@ -460,22 +485,39 @@ class INRF2D(INRFBase):
         if self.fourier_encoding is not None:
             fields['coords'] = self.fourier_encoding(fields['coords'])
             test_fields['coords'] = self.fourier_encoding(test_fields['coords'])
+        
+        if self.graph_topology == 'siren':
+            fields['coords'] = fields['coords'].reshape(1, fields['coords'].shape[1], -1)
+            fields['coords'] = fields['coords'].permute(2, 1, 0).squeeze(-1)
+            test_fields['coords'] = test_fields['coords'].reshape(1, test_fields['coords'].shape[1], -1)
+            test_fields['coords'] = test_fields['coords'].permute(2, 1, 0).squeeze(-1)
 
         target = target.unsqueeze(0)
-        for it in range(n_iters):
+        if self.graph_topology == 'siren':
+            latent_input = latents['sample']
+            test_input = test_latents['sample']
+        else:
+            latent_input = latents['input']
+            test_input = test_latents['input']
+
+        for _ in range(n_iters):
             optimizer.zero_grad()
-            frame = self.map_fn(fields['coords'], latents['input'])
+            frame = self.map_fn(fields['coords'], latent_input)
             frame = frame.reshape(target.shape)
             loss_val = loss(frame, target)
             loss_val.backward()
             optimizer.step()
             if scheduler is not None:
                 scheduler.step()
-            
-        test_frame = self.map_fn(test_fields['coords'], test_latents['input'])
+        
+        test_frame = self.map_fn(test_fields['coords'], test_input)
+        if self.graph_topology != 'conv':
+            test_frame = test_frame.reshape(1, target.shape[1], *test_resolution[:-1])
+        frame = frame.permute(0, 2, 3, 1)
         test_frame = test_frame.permute(0, 2, 3, 1)
+
+        frame = unnormalize_and_numpy(frame, self.map_fn.final_activation)
         test_frame = unnormalize_and_numpy(test_frame, self.map_fn.final_activation)
-        frame = unnormalize_and_numpy(frame[0].permute(1, 2, 0), self.map_fn.final_activation)
         return frame, test_frame, loss_val
 
 

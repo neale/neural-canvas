@@ -70,7 +70,43 @@ def init_weights_dip(module):
     return module
 
 
-def init_weights_siren(module, omega_0=30., hidden_omega_0=30.):
+def init_weights_siren(module, scale_siren_init=30.0, scale_siren=1.0):
+    if len(list(module.modules())) == 0:
+        warnings.warn('No modules found to init. Returning module unchanged.')
+        return module
+    for i, layer in enumerate(module.layers):
+        if i == 0:
+            if isinstance(layer, nn.Linear):
+                wstd = 1.0 / layer.in_features
+                nn.init.uniform_(layer.weight.data, -wstd, wstd)
+            elif isinstance(layer, nn.Conv2d):
+                wstd = 1.0 / layer.in_channels
+                nn.init.uniform_(layer.weight.data, -wstd, wstd)
+        else:
+            if isinstance(layer, nn.Linear):
+                wstd = np.sqrt(6./layer.in_features) / scale_siren
+                nn.init.uniform_(layer.weight.data, -wstd, wstd)
+            elif isinstance(layer, nn.Conv2d):
+                wstd = np.sqrt(6./layer.in_channels) / scale_siren
+                nn.init.uniform_(layer.weight.data, -wstd, wstd)
+        if isinstance(layer, (nn.Linear, nn.Conv2d)) and hasattr(layer.bias, 'data'):
+            nn.init.uniform_(layer.bias.data, -wstd, wstd)
+    if isinstance(module.final_layer, nn.Linear):
+        wstd = np.sqrt(6./module.final_layer.in_features) / scale_siren
+        nn.init.uniform_(module.final_layer.weight.data, -wstd, wstd)
+        if hasattr(module.final_layer.bias, 'data'):
+            nn.init.uniform_(module.final_layer.bias.data, -wstd, wstd)
+    elif isinstance(module.final_layer, nn.Conv2d):
+        wstd = np.sqrt(6./module.final_layer.in_channels) / scale_siren
+        nn.init.uniform_(module.final_layer.weight.data, -wstd, wstd)
+        if hasattr(module.final_layer.bias, 'data'):
+            nn.init.uniform_(module.final_layer.bias.data, -wstd, wstd)
+            
+    return module
+
+
+"""
+def init_weights_siren(module, scale_siren_init=30.0, scale_siren=1.0):
     if len(list(module.modules())) == 0:
         warnings.warn('No modules found to init. Returning module unchanged.')
         return module
@@ -102,4 +138,4 @@ def init_weights_siren(module, omega_0=30., hidden_omega_0=30.):
                     nn.init.constant_(layer.bias.data, 0.0)
 
     return module
-
+"""

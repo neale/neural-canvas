@@ -37,6 +37,7 @@ def load_image_as_tensor(path, output_dir='/tmp', device='cpu'):
         img=(target.permute(0, 2, 3, 1)[0].cpu().numpy()+1)*127.5, suffix='jpg')
     return target
 
+
 def unnormalize_and_numpy(x, output_activation='tanh'):
     x = x.detach().cpu().numpy()
     if output_activation == 'tanh':
@@ -46,6 +47,7 @@ def unnormalize_and_numpy(x, output_activation='tanh'):
     else:
         x = (x * (255./x.max())).astype(np.uint8)
     return x
+
 
 def write_image(path, img, suffix='jpg', metadata=None, colormaps=None):
     import cv2

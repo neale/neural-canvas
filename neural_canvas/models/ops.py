@@ -14,9 +14,10 @@ class Gaussian(nn.Module):
 class SinLayer(nn.Module):
     def __init__(self, scale=1.0):
         super(SinLayer, self).__init__()
+        self.scale = scale
 
     def forward(self, x):
-        return torch.sin(x)
+        return torch.sin(self.scale * x)
 
 
 class CosLayer(nn.Module):
@@ -64,3 +65,4 @@ class StraightThroughEstimator(nn.Module):
     def forward(self, x):
         x = STEFunction.apply(x)
         return x
+    
