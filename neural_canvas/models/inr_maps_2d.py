@@ -383,25 +383,24 @@ class SIREN(nn.Module):
             self.act_out = nn.Identity()
 
     def forward(self, fields, latents=None):
-        #print (fields.shape)
-        #fields = fields[:, :2]
-        latents = None
-        x = fields # rearrange(fields, 'b c h w -> (b h w) c')
+        latents = latents.squeeze(1).squeeze(0)
+        z = latents
+        x = fields
         if x.ndim == 3:
             x = x.squeeze(-1)
         
         if latents is not None:
             zs = []
-            for act, layer in zip(self.latent_maps, self.latent_acts):
+            for layer, act in zip(self.latent_maps, self.latent_acts):
                 z = act(layer(z))
                 zs.append(z)
-                z = torch.cat((z, latents.squeeze(1)), dim=1)
+                z = torch.cat((z, latents))#, dim=1)
         else:
             zs = [1.0 for _ in range(len(self.layers))]
 
         for act, layer, z in zip(self.acts, self.layers, zs):
             x = act(layer(x))
-            x = x * z
+            x = x * rearrange(z, 'f -> () f')
         x_out = self.act_out(self.final_layer(x))
         return x_out
     

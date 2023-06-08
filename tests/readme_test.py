@@ -99,7 +99,7 @@ model.init_map_fn(activations='GELU',
                   num_fourier_freqs=8,
                   input_encoding_dim=16) # better params for fitting
 loss = LossModule(l2_alpha=1.0)
-model.fit(img, loss=loss, n_iters=1000)  # returns a implicit neural representation of the image
+model.fit(img, loss=loss, n_iters=100)  # returns a implicit neural representation of the image
 
 print ('INRF size', model.size)  # return size of neural representation
 print ('data size', np.prod(img.shape))
@@ -114,15 +114,17 @@ axes[0].set_title('image fit 256x256')
 axes[1].set_title('image fit 1024x1024')
 plt.show()
 
+model = INRF2D(device='cpu', latent_dim=128) # or 'cuda'
 model.init_map_fn(activations='siren', 
                   weight_init='siren', 
                   graph_topology='siren', 
                   final_activation='tanh',
                   num_fourier_freqs=None,
-                  mlp_layer_width=64,
+                  mlp_layer_width=128,
                   input_encoding_dim=1) # better params for fitting
 loss = LossModule(l2_alpha=1.0)
-model.fit(img, loss=loss, n_iters=1000)  # returns a implicit neural representation of the image
+_, _, _, z = model.fit(img, loss=loss, n_iters=1000, trainable_latent=True)  
+# returns a implicit neural representation of the image
 
 print ('INRF (SIREN) size', model.size)  # return size of neural representation
 # >> 30083
@@ -130,9 +132,9 @@ print ('data size', np.prod(img.shape))
 # >> 196608
 
 # get original data
-img_original = model.generate(output_shape=(256, 256), sample_latent=True)
+img_original = model.generate(output_shape=(256, 256), latents=z)
 # >> (1, 256, 256, 3)
-img_super_res = model.generate(output_shape=(1024,1024), sample_latent=True) 
+img_super_res = model.generate(output_shape=(1024,1024), latents=z) 
 # >> (1, 1024, 1024, 3)
 
 fig, axes = plt.subplots(1, 2)

@@ -324,7 +324,8 @@ class INRF2D(INRFBase):
             if 'sample' not in latents.keys():
                 sample = torch.ones(batch_size, 1, self.latent_dim)
                 sample = sample.uniform_(-2, 2)
-                latents['sample'] = sample
+                latents['sample'] = sample.to(self.device)
+
             one_vec = torch.ones(x_dim*y_dim, 1).float().to(self.device)
             latents['input'] = torch.matmul(one_vec, latents['sample']) * self.latent_scale
         latents['input'] = latents['input'].to(self.device)
@@ -419,7 +420,6 @@ class INRF2D(INRFBase):
         else:
             raise ValueError(f'splits must be >= 1, got {splits}')
 
-        print (f'Output Frame Shape: {frame.shape}, {output_shape}')
         if self.graph_topology in ['mlp', 'WS', 'simple']:#, 'siren']:
             frame = frame.reshape(output_shape)
         elif self.graph_topology == 'siren':
@@ -439,7 +439,8 @@ class INRF2D(INRFBase):
             scheduler=None,
             inputs=None, 
             test_inputs=None,
-            test_resolution=(512, 512, 3)):
+            test_resolution=(512, 512, 3),
+            trainable_latent=False):
         """optimizes parameters of 2D INRF to fit a target image
         Args:
             target (torch tensor or np.ndarray): target image to fit
@@ -500,6 +501,10 @@ class INRF2D(INRFBase):
             latent_input = latents['input']
             test_input = test_latents['input']
 
+        if trainable_latent:
+            latent_input = nn.Parameter(latent_input)
+            optimizer.add_param_group({'params': latent_input})
+
         for _ in range(n_iters):
             optimizer.zero_grad()
             frame = self.map_fn(fields['coords'], latent_input)
@@ -509,7 +514,9 @@ class INRF2D(INRFBase):
             optimizer.step()
             if scheduler is not None:
                 scheduler.step()
-        
+
+        latents['sample'] = latent_input.detach()
+                
         test_frame = self.map_fn(test_fields['coords'], test_input)
         if self.graph_topology != 'conv':
             test_frame = test_frame.reshape(1, target.shape[1], *test_resolution[:-1])
@@ -518,7 +525,7 @@ class INRF2D(INRFBase):
 
         frame = unnormalize_and_numpy(frame, self.map_fn.final_activation)
         test_frame = unnormalize_and_numpy(test_frame, self.map_fn.final_activation)
-        return frame, test_frame, loss_val
+        return frame, test_frame, loss_val, latents
 
 
 class INRF3D(INRFBase):
