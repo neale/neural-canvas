@@ -1,0 +1,144 @@
+import os
+import yaml
+import argparse
+import torch
+
+from neural_canvas.utils import schedulers
+from neural_canvas.runners import runner2d
+from neural_canvas.utils import utils
+
+
+def load_args(argv=None):
+    parser = argparse.ArgumentParser(description='INRF2D-edit-config')
+    parser.add_argument('--conf', default=None, type=str, help='args config file')
+    parser.add_argument('--latent_dim', default=8, type=int, help='latent space width')
+    parser.add_argument('--latent_scale', default=1.0, type=float, help='mutiplier on z')
+    parser.add_argument('--num_samples', default=1, type=int, help='images to generate')
+    parser.add_argument('--x_dim', default=256, type=int, help='out image width')
+    parser.add_argument('--y_dim', default=256, type=int, help='out image height')
+    parser.add_argument('--c_dim', default=4, type=int, help='channels')
+    parser.add_argument('--mlp_layer_width', default=32, type=int, help='net width')    
+    parser.add_argument('--activations', default='fixed', type=str,
+        help='activation set for generator')
+    parser.add_argument('--final_activation', default='sigmoid', type=str, help='last activation')
+    parser.add_argument('--graph_topology', default='mlp_fixed', type=str,
+        help='graph style to use for generator', choices=['mlp_fixed', 'WS'])
+    parser.add_argument('--batch_size', default=1, type=int)
+    parser.add_argument('--use_gpu', action='store_true', help='use gpu')
+    parser.add_argument('--ws_graph_nodes', default=10, type=int, help='number of nodes in ws graph')
+    parser.add_argument('--weight_init', default='normal', type=str, help='weight init scheme')
+    parser.add_argument('--weight_init_mean', default=0.0, type=float, help='weight init mean')
+    parser.add_argument('--weight_init_std', default=1.0, type=float, help='weight init std')
+    parser.add_argument('--weight_init_max', default=2.0, type=float, help='weight init max')
+    parser.add_argument('--weight_init_min', default=-2.0, type=float, help='weight init min')
+
+    parser.add_argument('--seed', default=42, type=int, help='random seed')
+    parser.add_argument('--ignore_seed', action='store_true', help='ignore random seed, ' \
+        'useful for running the same config multiple times without changing seed each run')
+
+    parser.add_argument('--output_dir', default='trial', type=str, help='output fn')
+    parser.add_argument('--tmp_dir', default='trial', type=str, help='output fn')
+
+    parser.add_argument('--colormaps', type=str, default=None, help='colormaps to save out',
+        choices=['gray', 'hsv', 'lab', 'hls', 'luv'])
+
+    # For Zoom videos
+    parser.add_argument('--save_zoom_stack', action='store_true', help='save zoomed in/out frames')
+    parser.add_argument('--zoom_bounds', default=(.5, .5), type=tuple, help='zoom in/out boundaries')
+    parser.add_argument('--zoom_scheduler', default=None, type=str, help='zoom in/out pacing',
+        choices=['linear', 'geometric', 'cosine', 'sigmoid', 'exp', 'log', 'sqrt'])
+    # For Pan videos
+    parser.add_argument('--pan_bounds', default=(2, 2), type=tuple, help='pan boundaries')
+    parser.add_argument('--pan_scheduler', default=None, type=str, help='pan pacing',
+        choices=['linear', 'geometric', 'cosine', 'sigmoid', 'exp', 'log', 'sqrt'])
+    # For regenerating and augmenting images
+    parser.add_argument('--animate_image_path', type=str, default=None, help='path to image to regenerate')
+    parser.add_argument('--animate_x_dim', type=int, default=512, help='width of output image')
+    parser.add_argument('--animate_y_dim', type=int, default=512, help='height of output image')
+    parser.add_argument('--animate_c_dim', type=int, default=3, help='channels in output image')
+    parser.add_argument('--save_video_from_frames', action='store_true', help='save video')
+    parser.add_argument('--lerp_iters', type=int, default=1, help='number of keyframes to interpolate between')
+
+
+    args, _ = parser.parse_known_args(argv)
+    if os.path.isfile(args.conf):
+        with open(args.conf, 'r') as f:
+            defaults = yaml.safe_load(f)
+        
+        defaults = {k: v for k, v in defaults.items() if v is not None}
+        parser.set_defaults(**defaults)
+        args, _ = parser.parse_known_args(argv)
+    
+    return args
+
+
+if __name__ == '__main__':
+    args = load_args()
+    if args.use_gpu and torch.cuda.is_available():
+        device = 'cuda'
+    else:
+        device = 'cpu'
+    if args.zoom_scheduler is not None:
+        print (f'Using zoom scheduler: {args.zoom_scheduler}')
+        zoom_schedule = getattr(schedulers, args.zoom_scheduler)(
+            *args.zoom_bounds, args.num_samples)
+        zoom_schedule = torch.stack([zoom_schedule, zoom_schedule], -1)
+        print (zoom_schedule)
+
+    else:
+        zoom_schedule = None
+    if args.pan_scheduler is not None:
+        print (f'Using pan scheduler: {args.pan_scheduler}')
+        pan_schedule = getattr(schedulers, args.pan_scheduler)(
+            *args.pan_bounds, args.num_samples)
+        pan_schedule = torch.stack([pan_schedule, pan_schedule], -1)
+    else:
+        pan_schedule = None
+    
+
+    if args.animate_image_path is not None:
+        runner = runner2d.RunnerINRF2D(output_dir=args.output_dir, colormaps=args.colormaps)
+        latents_init = runner.reinit_model_from_metadata(
+            path=args.animate_image_path,
+            output_shape=(args.animate_x_dim, args.animate_y_dim, args.animate_c_dim),
+        )
+
+        # we will generate a video by interpolating between the start and end latents
+        # but this will be done multiple times, with the final one lerping to the start
+        latents_start = latents_init
+        frame_i = 0
+        for idx in range(args.lerp_iters+1):
+            if idx == args.lerp_iters:
+                latents_end = latents_init
+            else:
+                latents_end = runner.model.sample_latents(
+                    reuse_latents=None, 
+                    output_shape=(1, args.animate_x_dim, args.animate_y_dim),
+                )
+            lerp_schedule = utils.lerp(latents_start, latents_end, args.num_samples)  
+
+            base = args.animate_image_path.split('_')[-2]
+            save_fn = os.path.join(args.output_dir, f'animate_{base}')
+            frame_store = []
+            while lerp_schedule:
+                latents = lerp_schedule.pop(0)
+                frame, metadata = runner.run_frames(
+                    latents=latents,
+                    num_samples=1,
+                    zoom_schedule=zoom_schedule,
+                    pan_schedule=pan_schedule,
+                    splits=1,
+                    autosave=False)
+                frame = frame[0]
+                metadata = metadata[0]
+                ind = str(frame_i).zfill(5)
+                utils.write_image(path=f'{args.output_dir}/frame_{ind}', img=frame, suffix='png', colormaps=args.colormaps)
+                #utils.write_image(path=f'{save_fn}_frame{z_i}', img=frame, suffix='png', colormaps=args.colormaps)
+                #utils.write_image(path=f'{save_fn}_frame{idx}-{z_i}', img=frame, suffix='tif', metadata=metadata)
+                #frame_store.append(frame)
+                latents_start = latents_end
+                frame_i += 1
+
+        if args.save_video_from_frames:
+            print ('writing video')
+            utils.write_video(frames=frame_store, save_path=save_fn+'_video', ffmpeg=True)

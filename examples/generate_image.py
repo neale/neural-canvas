@@ -67,8 +67,8 @@ if __name__ == '__main__':
         args.latent_scale = float(np.random.choice([.1, .5, 1, 4, 8, 16, 32, 64]))
         args.mlp_layer_width = int(np.random.choice([16, 32, 64]))
         args.activations = str(np.random.choice(['fixed', 'random']))
-        args.graph_topology = str(np.random.choice(['simple', 'mlp', 'WS']))
-        args.ws_graph_nodes = int(np.random.choice([8, 16]))#, 32, 64]))
+        args.graph_topology = 'WS' # str(np.random.choice(['simple', 'mlp', 'WS']))
+        args.ws_graph_nodes = 1024 # int(np.random.choice([8, 16]))#, 32, 64]))
         args.weight_init = str(np.random.choice(['normal', 'uniform']))
         args.weight_init_mean = float(np.random.choice([-3, -2, -1, 0, 1, 2, 3]))
         args.weight_init_std = float(np.random.choice([.5, .85, 1.0, 1.15]))
@@ -83,7 +83,7 @@ if __name__ == '__main__':
                        tmp_dir=args.tmp_dir,
                        seed=args.seed if not args.ignore_seed else None,
                        device=device)
-    
+    print (args.graph_topology, args.ws_graph_nodes)
     generator.init_map_fn(mlp_layer_width=args.mlp_layer_width,
                           activations=args.activations,
                           final_activation=args.final_activation,

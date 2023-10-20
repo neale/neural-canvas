@@ -108,7 +108,7 @@ def randact(activation_set='large'):
     if activation_set == 'large':
         acts = [nn.ELU, nn.Hardtanh, nn.LeakyReLU, nn.LogSigmoid,
                 nn.SELU, nn.GELU, nn.CELU, nn.Softshrink, nn.Sigmoid,
-                SinLayer, CosLayer, nn.Softplus, nn.Mish, nn.Tanh]
+                SinLayer, CosLayer, nn.Softplus, nn.Mish, nn.Tanh, Gaussian, ScaleAct, AddAct]
     else:
         acts = [nn.Sigmoid, SinLayer, CosLayer, Gaussian, nn.Softplus, nn.Mish,
                 nn.Tanh, ScaleAct, AddAct]

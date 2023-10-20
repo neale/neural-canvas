@@ -103,39 +103,3 @@ def init_weights_siren(module, scale_siren_init=30.0, scale_siren=1.0):
             nn.init.uniform_(module.final_layer.bias.data, -wstd, wstd)
             
     return module
-
-
-"""
-def init_weights_siren(module, scale_siren_init=30.0, scale_siren=1.0):
-    if len(list(module.modules())) == 0:
-        warnings.warn('No modules found to init. Returning module unchanged.')
-        return module
-    for i, layer in enumerate(module.modules()):
-        if i == 0:
-            if isinstance(layer, nn.Linear):
-                nn.init.uniform_(layer.weight.data, -1/layer.in_features, 1/layer.in_features)
-                if hasattr(layer.bias, 'data'):
-                    nn.init.constant_(layer.bias.data, 0.0)
-        elif i == len(list(module.modules())) - 1:
-            if isinstance(layer, nn.Linear):
-                nn.init.uniform_(layer.weight.data,
-                                 -np.sqrt(6./layer.in_features) / hidden_omega_0,
-                                 np.sqrt(6./layer.in_features) / hidden_omega_0)
-                if hasattr(layer.bias, 'data'):
-                    nn.init.constant_(layer.bias.data, 0.0)  
-        else:
-            if isinstance(layer, nn.Linear):
-                nn.init.uniform_(layer.weight.data,
-                                 -np.sqrt(6./layer.in_features) / omega_0,
-                                 np.sqrt(6./layer.in_features) / omega_0)
-                if hasattr(layer.bias, 'data'):
-                    nn.init.constant_(layer.bias.data, 0.0)
-            elif isinstance(layer, nn.Conv2d):
-                nn.init.uniform_(layer.weight.data,
-                                 -np.sqrt(6./layer.in_channels) / omega_0,
-                                 np.sqrt(6./layer.in_channels) / omega_0)
-                if hasattr(layer.bias, 'data'):
-                    nn.init.constant_(layer.bias.data, 0.0)
-
-    return module
-"""

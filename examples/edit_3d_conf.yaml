@@ -14,12 +14,13 @@ ignore_seed: True
 #pan_bounds: [1, 100]
 #pan_schedule: linear  # geometric, cosine, exp, sqrt, sigmoid, cbrt 
 # For regenerating and augmenting images
-regen_x_dim: 1000  # decrease to save memory
-regen_y_dim: 1000
-regen_z_dim: 1000
-regen_c_dim: 4
+regen_x_dim: 500  # decrease to save memory
+regen_y_dim: 500
+regen_z_dim: 500
+regen_c_dim: 3
 
-splits: 100  # requires about 50GB of RAM for 100 splits
+render_volumes_to_html: True
+splits: 10  # requires about 50GB of RAM for 100 splits
 #save_video_from_volumes: True
 regen_image_path: outputs/test_volume
-output_dir: outputs/test_volume_rgba
+output_dir: outputs/test_volume_renders

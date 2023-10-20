@@ -1,7 +1,7 @@
 # Example config for generating and upscaling images with an INRF2D
 
-noise_dim: 8
-noise_scale: 4
+latent_dim: 8
+latent_scale: 4
 num_samples: 1
 x_dim: 512
 y_dim: 512
@@ -9,16 +9,16 @@ c_dim: 3
 mlp_layer_width: 32
 activations: random # fixed random nn.GELU
 final_activation: tanh # sigmoid tanh !!null
-graph_topology: mlp # conv, WS, mlp, simple
+graph_topology: WS # conv, WS, mlp, simple
 batch_size: 1
 # use_gpu: True
-ws_graph_nodes: 64
+ws_graph_nodes: 1024
 weight_init: normal # normal uniform, dip, siren
-output_dir: outputs/test_gen
+output_dir: outputs/graph_1024 #outputs/test_gen
 tmp_dir: tmp/
 
 seed: 62
 ignore_seed: True
 # For generating randomized images
 random_settings: True
-# colormaps: [luv, hsv, lab]  # gray, hls
+# colormaps: [luv, hsv, lab]  # gray, hls 

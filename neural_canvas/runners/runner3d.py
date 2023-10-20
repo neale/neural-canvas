@@ -110,8 +110,9 @@ class RunnerINRF3D:
                     self.logger.info('skipping blank output')
                     continue
             metadata.append(self.model._metadata(latents))
+            save_fn = os.path.join(self.output_dir, f'{self.save_prefix}_{randID}_{i}')
+
             if autosave:
-                save_fn = os.path.join(self.output_dir, f'{self.save_prefix}_{randID}_{i}')
                 if self.save_verbose:
                     self.logger.info(f'saving TIFF/PNG images at: {save_fn} of size: {volume.shape}')
                 utils.write_image(path=save_fn+'_front_view', img=volume[0, :, :, :], suffix='jpg')
@@ -163,7 +164,7 @@ class RunnerINRF3D:
                                            metadata['z_dim'])}
         return loaded_latents
 
-    def regen_volumes(self,
+    def regen_volume(self,
                       path,
                       output_shape,
                       num_samples=1,
@@ -172,11 +173,11 @@ class RunnerINRF3D:
                       pan_schedule=None,
                       save_video=False):
         """
-        Regenerate volumes from a trained model using a different output shape, 
+        Regenerate single volume from a trained model using a different output shape, 
         Zooming and panning around the scene is also possible by providing a zoom/pan schedule
 
         Args:
-            paths: (str) path to image or directory of images
+            paths: (str) path to image/volume tiff file
             output_shape: (tuple[int]) new shape for the model
             num_samples: (int, optional) number of volumes to generate
             splits: (int, optional) number of splits to use for generation
@@ -190,41 +191,34 @@ class RunnerINRF3D:
             volumes: (list) list of generated volumes
         """
 
-        assert os.path.exists(path), 'Must provide existing path to volume, or directory'
-        if os.path.isdir(path):
-            image_paths = glob.glob(os.path.join(path, '*.tif'))
-        elif os.path.isfile(path):
-            image_paths = [path]
+        assert os.path.exists(path), 'Must provide existing path to volume'
+        assert os.path.isfile(path), f'Invalid path: {path}'
+        basename = os.path.basename(path)
+        save_fn = os.path.join(self.output_dir, f'{basename[:-4]}_reproduce')
+        if os.path.exists(save_fn+'_top_view_0.jpg'):
+            self.logger.info(f'Found existing output at: {save_fn}')
+            return 
         else:
-            ValueError(f'Invalid path: {path}')
-        for path in image_paths:
-            basename = os.path.basename(path)
-            save_fn = os.path.join(self.output_dir, f'{basename[:-4]}_reproduce')
-            if os.path.exists(save_fn+'_top_view_0.jpg'):
-                self.logger.info(f'Found existing output at: {save_fn}')
-                continue
-            else:
-                print ('Running reproduction for: ', path, 'saving at: ', save_fn)
-            # load metadata from given tif file(s)
-            latents = self.reinit_model_from_metadata(path=path, output_shape=output_shape)
-            latents = self.model.sample_latents(reuse_latents=latents)
-            volumes, metadata = self.run_volumes(latents=latents,
-                                                 num_samples=num_samples,
-                                                 zoom_schedule=zoom_schedule,
-                                                 pan_schedule=pan_schedule,
-                                                 splits=splits,
-                                                 autosave=False)
-            self.logger.info(f'saving {len(volumes)} TIFF/PNG images at: {save_fn}')
-            for i, (volume, meta) in enumerate(zip(volumes, metadata)):
-                if self.save_verbose:
-                    self.logger.info(f'saving TIFF/PNG images at: {save_fn} of size: {volume.shape}')
-                utils.write_image(path=save_fn+f'_front_view_{i}', img=volume[0, :, :, :], suffix='jpg')
-                utils.write_image(path=save_fn+f'_side_view_{i}',  img=volume[:, 0, :, :], suffix='jpg')
-                utils.write_image(path=save_fn+f'_top_view_{i}',   img=volume[:, :, 0, :], suffix='jpg')
-                utils.write_image(path=save_fn, img=volume, suffix='tif', metadata=meta)
-            if save_video:
-                utils.write_video(volumes, self.output_dir, save_name=basename)
-            volumes = None
+            print ('Running reproduction for: ', path, 'saving at: ', save_fn)
+        # load metadata from given tif file(s)
+        latents = self.reinit_model_from_metadata(path=path, output_shape=output_shape)
+        latents = self.model.sample_latents(reuse_latents=latents)
+        volumes, metadata, _ = self.run_volumes(latents=latents,
+                                                num_samples=num_samples,
+                                                zoom_schedule=zoom_schedule,
+                                                pan_schedule=pan_schedule,
+                                                splits=splits,
+                                                autosave=False)
+        self.logger.info(f'saving {len(volumes)} TIFF/PNG images at: {save_fn}')
+        for i, (volume, meta) in enumerate(zip(volumes, metadata)):
+            if self.save_verbose:
+                self.logger.info(f'saving TIFF/PNG images at: {save_fn} of size: {volume.shape}')
+            utils.write_image(path=save_fn+f'_front_view_{i}', img=volume[0, :, :, :], suffix='jpg')
+            utils.write_image(path=save_fn+f'_side_view_{i}',  img=volume[:, 0, :, :], suffix='jpg')
+            utils.write_image(path=save_fn+f'_top_view_{i}',   img=volume[:, :, 0, :], suffix='jpg')
+            utils.write_image(path=save_fn, img=volume, suffix='tif', metadata=meta)
+        if save_video:
+            utils.write_video(volumes, self.output_dir, save_name=basename)
         return volumes
     
     def fit(self,

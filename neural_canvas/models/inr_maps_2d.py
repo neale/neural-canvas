@@ -84,6 +84,7 @@ class INRRandomGraph(nn.Module):
             self.act_out = torch.sigmoid
         elif final_activation is None:
             self.act_out = nn.Identity()
+        print (self.graph)
         
     def generate_act_list(self):
         acts = [randact(activation_set='large') for _ in range(7)]
@@ -383,7 +384,7 @@ class SIREN(nn.Module):
             self.act_out = nn.Identity()
 
     def forward(self, fields, latents=None):
-        latents = latents.squeeze(1).squeeze(0)
+        latents = latents.squeeze(1)#.squeeze(0)
         z = latents
         x = fields
         if x.ndim == 3:
@@ -394,13 +395,13 @@ class SIREN(nn.Module):
             for layer, act in zip(self.latent_maps, self.latent_acts):
                 z = act(layer(z))
                 zs.append(z)
-                z = torch.cat((z, latents))#, dim=1)
+                z = torch.cat((z, latents), dim=1)
         else:
             zs = [1.0 for _ in range(len(self.layers))]
 
         for act, layer, z in zip(self.acts, self.layers, zs):
             x = act(layer(x))
-            x = x * rearrange(z, 'f -> () f')
+            x = x * rearrange(z.squeeze(0), 'f -> () f')
         x_out = self.act_out(self.final_layer(x))
         return x_out
     

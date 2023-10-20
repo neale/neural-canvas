@@ -131,7 +131,7 @@ class INRF2D(INRFBase):
     def data(self):
         # returns the data characterized by this INRF
         fields = self.construct_fields()
-        data = self.map_fn(fields['coords'])
+        data = self.map_fn(fields=fields['coords'])
         return data
     
     @property
@@ -290,7 +290,8 @@ class INRF2D(INRFBase):
                   'pan': pan}
         return fields
     
-    def sample_latents(self, reuse_latents=None, output_shape=None):
+    @torch.no_grad()
+    def sample_latents(self, reuse_latents=None, output_shape=None, generator=None):
         """
         initializes latent inputs for the forward map
         Args:
@@ -316,18 +317,22 @@ class INRF2D(INRFBase):
             latents = reuse_latents
         else:
             latents = {'base_shape':(x_dim, y_dim), 'sample_shape': (x_dim, y_dim)}
+        if generator is None:
+            generator = lambda x: x.uniform_(-2, 2)
         if self.graph_topology == 'conv':  #
             sample = torch.ones(batch_size, self.latent_dim, x_dim, y_dim)
-            latents['sample'] = sample.uniform_(-2, 2)
+            latents['sample'] = generator(sample)
             latents['input'] = latents['sample'].clone()
         else:
             if 'sample' not in latents.keys():
                 sample = torch.ones(batch_size, 1, self.latent_dim)
-                sample = sample.uniform_(-2, 2)
+                sample = generator(sample)
                 latents['sample'] = sample.to(self.device)
-
-            one_vec = torch.ones(x_dim*y_dim, 1).float().to(self.device)
-            latents['input'] = torch.matmul(one_vec, latents['sample']) * self.latent_scale
+            if self.graph_topology == 'siren':
+                latents['input'] = latents['sample']
+            else:
+                one_vec = torch.ones(x_dim*y_dim, 1).float().to(self.device)
+                latents['input'] = torch.matmul(one_vec, latents['sample']) * self.latent_scale
         latents['input'] = latents['input'].to(self.device)
         return latents
 
@@ -336,7 +341,8 @@ class INRF2D(INRFBase):
                  fields=None,
                  output_shape=None,
                  splits=1,
-                 sample_latent=False):
+                 sample_latent=False,
+                 latent_generator=None,):
         """
         samples from the forward map
         Args:
@@ -349,8 +355,8 @@ class INRF2D(INRFBase):
                 (`self.x_dim`, `self.y_dim`, self.z_dim`)
             splits (int): number of splits to use for sampling. Used to reduce memory usage
             sample_latent (bool): whether to sample random latent inputs
-            num_fourier_freqs (int, Optional): if provided, then the latent inputs are fourier encoded 
-                with the provided number of frequencies
+            latent_generator (Callable, Optional): generator to use for sampling latents
+
         Returns:
             frame (torch tensor): sampled frame
         """
@@ -359,16 +365,25 @@ class INRF2D(INRFBase):
                 fields = self.construct_fields()
             if latents is None:
                 if sample_latent:
-                    latents = self.sample_latents(output_shape=fields['shape'])                
+                    latents = self.sample_latents(
+                        output_shape=fields['shape'],
+                        generator=latent_generator
+                    )                
         else: 
             if fields is None:
                 fields = self.construct_fields(output_shape=output_shape)
             if latents is not None:
                 if fields['shape'] != latents['sample_shape']:
                     latents = self.sample_latents(
-                        output_shape=output_shape, reuse_latents=latents)
+                        output_shape=output_shape,
+                        reuse_latents=latents,
+                        generator=latent_generator
+                    )
             if sample_latent:
-                latents = self.sample_latents(output_shape=output_shape)
+                latents = self.sample_latents(
+                    output_shape=output_shape,
+                    generator=latent_generator
+                )
 
         output_shape = fields['shape'] + (self.c_dim,)
 
@@ -440,7 +455,8 @@ class INRF2D(INRFBase):
             inputs=None, 
             test_inputs=None,
             test_resolution=(512, 512, 3),
-            trainable_latent=False):
+            trainable_latent=False,
+            latent_generator=None):
         """optimizes parameters of 2D INRF to fit a target image
         Args:
             target (torch tensor or np.ndarray): target image to fit
@@ -451,6 +467,8 @@ class INRF2D(INRFBase):
             inputs (tuple): tuple of (latents, fields) to use as inputs
             test_inputs (tuple): tuple of (latents, fields) to use as inputs for testing
             test_resolution (tuple): resolution of test inputs
+            trainable_latent (bool): whether to train the latent inputs
+            latent_generator (Callable, Optional): function to use that samples latent inputs
         Returns:
             frame (torch tensor): generated frame after fitting
             test_frame (torch tensor): generated frame of different resolution
@@ -464,12 +482,18 @@ class INRF2D(INRFBase):
         self.c_dim, self.x_dim, self.y_dim = target.shape
 
         if inputs is None:
-            latents = self.sample_latents(output_shape=target.shape[1:])
+            latents = self.sample_latents(
+                output_shape=target.shape[1:],
+                generator=latent_generator
+            )
             fields = self.construct_fields(output_shape=target.shape[1:])
         else:
             latents, fields = inputs
         if test_inputs is None:
-            test_latents = self.sample_latents(output_shape=test_resolution[:-1])   
+            test_latents = self.sample_latents(
+                output_shape=test_resolution[:-1],
+                generator=latent_generator
+            )  
             test_fields = self.construct_fields(output_shape=test_resolution[:-1])
         else:
             test_latents, test_fields = test_inputs

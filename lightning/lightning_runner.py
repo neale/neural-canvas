@@ -5,16 +5,13 @@ import shutil
 
 import torch
 import logging
-import warnings
 import numpy as np
 
 from neural_canvas.utils import utils
-from neural_canvas.utils.positional_encodings import FourierEncoding
-from neural_canvas.losses import losses
-from neural_canvas.models.inrf import INRF2D
+from lightning_models import LightningModel2D
 
 
-class RunnerINRF2D:
+class RunnerLightning2D:
     def __init__(self, 
                  model=None,
                  output_dir='',
@@ -35,7 +32,7 @@ class RunnerINRF2D:
 
         """
         if model:
-            assert isinstance(model, INRF2D)
+            assert isinstance(model, LightningModel2D)
         self.model = model
         if save_verbose:
             self.save_prefix = f'z-{model.latent_dim}_scale-{model.latent_scale}-{model.seed}'
@@ -46,7 +43,7 @@ class RunnerINRF2D:
         self.colormaps = colormaps
         self.output_dir = output_dir
         logging.basicConfig(level=logging.NOTSET)
-        self.logger = logging.getLogger('Runner2D')
+        self.logger = logging.getLogger('LightningRunner')
         self.logger.setLevel(logging.INFO)
 
     def backup_pyfiles(self):
@@ -60,10 +57,9 @@ class RunnerINRF2D:
     def run_frames(self,
                    latents=None,
                    num_samples=1,
+                   batch_size=1,
                    zoom_schedule=None,
-                   pan_schedule=None,
-                   splits=1, 
-                   autosave=True):
+                   pan_schedule=None):
         """
         Generate frames from a trained model
         Args:
@@ -86,8 +82,6 @@ class RunnerINRF2D:
         assert self.model, 'Must provide a model to generate from'
         frames = []
         metadata = []
-        randID = torch.randint(0, 99999999, size=(1,)).item()
-        self.logger.info(f'Generating {num_samples} frames using {splits} splits')
         for i in tqdm.tqdm(range(num_samples)):
             if zoom_schedule is not None:
                 zoom = zoom_schedule[i]
@@ -101,7 +95,7 @@ class RunnerINRF2D:
             latents = self.model.sample_latents(reuse_latents=latents, output_shape=output_shape)
             fields = self.model.construct_fields(output_shape=output_shape, zoom=zoom, pan=pan) 
             
-            frame = self.model.generate(latents, fields, splits=splits)
+            frame = self.model.generate(latents, fields)
             if frame.ndim == 4 and frame.shape[0] == 1:
                 frame = frame[0]     
             if self.skip_blank_generations:
@@ -109,12 +103,6 @@ class RunnerINRF2D:
                     self.logger.info('skipping blank output')
                     continue
             metadata.append(self.model._metadata(latents))
-            if autosave:
-                save_fn = os.path.join(self.output_dir, f'{self.save_prefix}_{randID}_{i}')
-                if self.save_verbose:
-                    self.logger.info(f'saving TIFF/PNG images at: {save_fn} of size: {frame.shape}')
-                utils.write_image(path=save_fn, img=frame, suffix='png', colormaps=self.colormaps)
-                utils.write_image(path=save_fn, img=frame, suffix='tif', metadata=metadata[-1])
             frames.append(frame)
 
         return frames, metadata
@@ -132,7 +120,7 @@ class RunnerINRF2D:
         if metadata is None:
             _, metadata = utils.load_tif_metadata(path)
         assert len(output_shape) == 3, f'Invalid output shape: {output_shape}, need ndim=3'
-        model = INRF2D(output_shape=output_shape,
+        model = LightningModel2D(output_shape=output_shape,
                        output_dir=self.output_dir,
                        latent_dim=metadata['latent_dim'],
                        latent_scale=metadata['latent_scale'],
@@ -220,73 +208,3 @@ class RunnerINRF2D:
             frames = None
         return frames
     
-    def fit(self,
-            target,
-            output_shape,
-            loss_weights,
-            num_epochs=50,
-            num_iters_per_epoch=100,
-            lr=1e-3,
-            weight_decay=1e-5,
-            write_outputs=False):
-        """fits model to target image
-        Args:
-            target: (torch.Tensor) target image
-            output_shape: (tuple[int]) new shape for the model
-            loss_weights: (dict) dictionary of loss weights
-            num_epochs: (int, optional) number of epochs to train for
-            n_iters_per_epoch: (int, optional) number of iterations per epoch
-            lr: (float, optional) learning rate
-            weight_decay: (float, optional) weight decay
-            write_outputs: (bool, optional) whether to write outputs to disk
-        """
-        warnings.warn('Fitting on CPU, will be slow')
-        assert self.model is not None, 'Must initialize model before fitting'
-        assert target.ndim == 4, 'Target must be 4D tensor'
-        optimizer = torch.optim.AdamW(self.model.map_fn.parameters(), 
-                                      lr=lr,
-                                      weight_decay=weight_decay,
-                                      betas=(.9, .999),
-                                      eps=1e-7) # support future half precision
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer, T_0=200, T_mult=2)
-        loss = losses.LossModule(**loss_weights)
-        epoch_iterator = tqdm.tqdm(range(num_epochs))
-        latents = self.model.sample_latents(output_shape=target.shape[2:])
-        fields = self.model.construct_fields(output_shape=target.shape[2:])
-        
-        test_latents = self.model.sample_latents(output_shape=output_shape[:-1])
-        test_fields = self.model.construct_fields(output_shape=output_shape[:-1])
-
-        loss_vals = []
-        for epoch in epoch_iterator:
-            frame, test_frame, loss_val = self.model.fit(target[0],
-                                                         num_iters_per_epoch,
-                                                         loss,
-                                                         optimizer=optimizer,
-                                                         scheduler=scheduler,
-                                                         inputs=(latents, fields),
-                                                         test_inputs=(test_latents, test_fields),
-                                                         test_resolution=output_shape,)
-            epoch_iterator.set_description(f'Epoch: {epoch}, Loss: {loss_val:.4f}')
-            loss_vals.append(loss_val.item())
-
-            if write_outputs:
-                if frame.ndim == 4 and frame.shape[0] == 1:
-                    frame = frame[0]
-                if test_frame.ndim == 4 and test_frame.shape[0] == 1:
-                    test_frame = test_frame[0]
-                metadata = self.model._metadata(latent=latents)
-                test_metadata = self.model._metadata(latent=test_latents)
-                utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=frame, 
-                    suffix='png')
-                utils.write_image(path=f'{self.output_dir}/fit_{epoch}', img=frame, 
-                    suffix='tif', metadata=metadata)
-                utils.write_image(path=f'{self.output_dir}/fit_{epoch}_test', img=test_frame, 
-                    suffix='png')
-                utils.write_image(path=f'{self.output_dir}/fit_{epoch}_test', img=test_frame, 
-                    suffix='tif', metadata=test_metadata)
-        self.logger.info(f'Finished fitting model')
-        return loss_vals
-
-            

@@ -1,0 +1,28 @@
+# Example config for generating and upscaling images with an INRF2D
+
+num_samples: 1000
+batch_size: 1
+# use_gpu: True
+seed: 62
+ignore_seed: True
+
+# colormaps: [luv, hsv, lab]  # gray, hls
+# For Zoom videos
+zoom_bounds: [.01, 1000] #[.0001, 1000] # 
+zoom_scheduler: geometric # linear geometric, cosine, exp, sqrt, sigmoid, cbrt
+# For Pan videos
+# pan_bounds: [1, 100]
+# pan_scheduler: linear  # geometric, cosine, exp, sqrt, sigmoid, cbrt 
+# For regenerating and augmenting images
+animate_y_dim: 512
+animate_x_dim: 512
+animate_c_dim: 3
+save_video_from_frames: True
+lerp_iters: 3
+animate_image_path: /home/neale/repos/neural_canvas_datasets/datasets/rlhf_dataset2/good/gen_image_2556785_0.tif
+#gen_image_401048_0.tif
+#gen_image_48686009_0.tif
+#gen_image_13767218_0.tif
+#gen_image_5825486_0.tifs
+# gen_image_5950222_0.tif #gen_image_8401871_0.tif
+output_dir: outputs/test_animation_2556785_2

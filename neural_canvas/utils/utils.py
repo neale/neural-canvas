@@ -14,14 +14,16 @@ import matplotlib.pyplot as plt
 logging.getLogger().setLevel(logging.ERROR)
 
 
+@torch.no_grad()
 def lerp(z1, z2, n):
-    delta = (z2 - z1) / (n + 1)
+    delta = (z2['sample'] - z1['sample']) / (n + 1)
     total_frames = n + 2
     states = []
     for i in range(total_frames):
-        z = z1 + delta * float(i)
-        states.append(z)
-    states = torch.stack(states)
+        z = z1['sample'] + delta * float(i)
+        zx = {'sample': z, 'sample_shape': z1['sample_shape']}
+        states.append(zx)
+        z = None
     return states
 
 
@@ -156,8 +158,17 @@ def load_tif_metadata(path):
         try:
             metadata[tensor_key] = torch.Tensor(data[tensor_key])
         except KeyError:
-            metadata[tensor_key] = None
-            warnings.warn(f'Key {tensor_key} not found in metadata, setting to None.')
+            if 'latent' in data:
+                metadata['latents'] = torch.tensor(data['latent'])
+                warnings.warn(f'Key {tensor_key} not found in metadata, but found `latent` (old style).. setting.')
+            else:
+                metadata[tensor_key] = None
+                warnings.warn(f'Key {tensor_key} not found in metadata, setting to None.')
+        
+    if metadata['input_encoding_dim'] is None:
+        metadata['input_encoding_dim'] = 1
+    if metadata['activations'] == 'basic':
+        metadata['activations'] = 'fixed'
     return img, metadata
 
 
@@ -207,14 +218,19 @@ def draw_graph(num_nodes, random_graph, graph, c_dim=3, img=None):
     return img_trans
 
 
-def write_video(frames, save_dir, save_name='video'):
-    import cv2
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v') 
-    width = frames[0].shape[0]
-    height = frames[0].shape[1]
-    path = os.path.join(save_dir, save_name)
-    video = cv2.VideoWriter(f'{path}.mp4', fourcc, 10., (width, height))
-    for frame in frames: 
-        video.write(frame)
-    cv2.destroyAllWindows()
-    video.release()
+def write_video(frames, save_path, ffmpeg=False):
+    if ffmpeg:
+        save_dir = '/'.join(save_path.split('/')[:-1])
+        print (save_dir)
+        print(save_path)
+        os.system(f'ffmpeg -framerate 10 -i {save_dir}/frame_%05d.png -c:v libx264 -pix_fmt yuv420p {save_path}.mp4')
+    else:
+        import cv2
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v') 
+        width = frames[0].shape[0]
+        height = frames[0].shape[1]
+        video = cv2.VideoWriter(f'{save_path}.mp4', fourcc, 10., (width, height))
+        for frame in frames: 
+            video.write(frame)
+        cv2.destroyAllWindows()
+        video.release()

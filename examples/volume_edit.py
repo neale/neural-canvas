@@ -1,8 +1,10 @@
 import os
 import yaml
+import glob
 import argparse
 import torch
 
+from render_volumes import render
 from neural_canvas.utils import schedulers
 from neural_canvas.runners import runner3d
 
@@ -61,6 +63,7 @@ def load_args(argv=None):
     parser.add_argument('--regen_z_dim', type=int, default=512, help='height of output image')
     parser.add_argument('--regen_c_dim', type=int, default=3, help='channels in output image')
     parser.add_argument('--save_video_from_volumes', action='store_true', help='save video')
+    parser.add_argument('--render_volumes_to_html', action='store_true', help='export to html')
 
     args, _ = parser.parse_known_args(argv)
     if os.path.isfile(args.conf):
@@ -99,13 +102,29 @@ if __name__ == '__main__':
     
     if args.regen_image_path is not None:
         runner = runner3d.RunnerINRF3D(output_dir=args.output_dir, colormaps=args.colormaps)
-        runner.regen_volumes(path=args.regen_image_path,
-                             output_shape=(args.regen_x_dim,
-                                           args.regen_y_dim,
-                                           args.regen_z_dim,
-                                           args.regen_c_dim),
-                             num_samples=args.num_samples,
-                             splits=args.splits,
-                             zoom_schedule=zoom_schedule,
-                             pan_schedule=pan_schedule,
-                             save_video=args.save_video_from_volumes)
+        if os.path.isdir(args.regen_image_path):
+            paths = glob.glob(os.path.join(args.regen_image_path, '*.tif'))
+        else:
+            paths = [args.regen_image_path]
+        for path in paths:
+            volumes = runner.regen_volume(
+                path=path,
+                output_shape=(
+                    args.regen_x_dim,
+                    args.regen_y_dim,
+                    args.regen_z_dim,
+                    args.regen_c_dim
+                ),
+                num_samples=args.num_samples,
+                splits=args.splits,
+                zoom_schedule=zoom_schedule,
+                pan_schedule=pan_schedule,
+                save_video=args.save_video_from_volumes
+            )
+            if not volumes:
+                continue
+            volume = volumes[0]
+            if args.render_volumes_to_html:
+                basename = os.path.basename(path)
+                save_fn = os.path.join(args.output_dir, f'{basename[:-4]}_render')
+                render(volume, save_fn, display=False, export=True)

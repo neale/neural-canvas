@@ -10,7 +10,7 @@ from neural_canvas.runners import runner3d
 import numpy as np
 import matplotlib.pyplot as plt
 import pyvista as pv
-from pyvista.themes import DefaultTheme
+from pyvista.plotting.themes import DefaultTheme
 from dask_image.imread import imread
 import logging
 logging.getLogger('PIL').setLevel(logging.WARNING)
@@ -205,7 +205,7 @@ def render_options(volume):
     p.show()
 
 
-def render(volume, path):
+def render(volume, path, export=False, display=False):
     """render volume with pyvista"""
     theme = DefaultTheme()
     theme.background = 'black'
@@ -226,7 +226,11 @@ def render(volume, path):
                  diffuse=.5,
                  blending='composite',
                  shade=False)
-    p.show()
+    if export:
+        p.export_html(path)
+    if display:
+        p.show()
+    p.close()
 
 
 def load_args(argv=None):

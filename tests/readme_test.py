@@ -89,6 +89,60 @@ from neural_canvas.utils import load_image_as_tensor
 from neural_canvas.losses import LossModule
 
 img = load_image_as_tensor('neural_canvas/assets/logo.jpg')[0]
+
+model = INRF2D(device='cpu', latent_dim=128) # or 'cuda'
+model.init_map_fn(activations='siren', 
+                  weight_init='siren', 
+                  graph_topology='siren', 
+                  final_activation='tanh',
+                  num_fourier_freqs=None,
+                  mlp_layer_width=128,
+                  input_encoding_dim=1) # better params for fitting
+loss = LossModule(l2_alpha=1.0)
+_, _, _, z = model.fit(
+    img,
+    loss=loss,
+    n_iters=200,
+    trainable_latent=True)
+    #latent_generator=lambda x: x.uniform_(-2, -2))
+
+# returns a implicit neural representation of the image
+
+print ('INRF (SIREN) size', model.size)  # return size of neural representation
+# >> 30083
+print ('data size', np.prod(img.shape))
+# >> 196608
+
+# get original data
+img_original = model.generate(output_shape=(256, 256), latents=z)
+# >> (1, 256, 256, 3)
+img_super_res = model.generate(output_shape=(1024,1024), latents=z) 
+# >> (1, 1024, 1024, 3)
+
+fig, axes = plt.subplots(1, 2)
+axes[0].imshow(img_original.squeeze())
+axes[1].imshow(img_super_res.squeeze())
+axes[0].set_title('SIREN image fit 256x256')
+axes[1].set_title('SIREN image fit 1024x1024')
+plt.show()
+
+model.map_fn = torch.quantization.quantize_dynamic(
+    model.map_fn,
+    {torch.nn.Linear},
+    dtype=torch.qint8
+)  
+fig, axes = plt.subplots(1, 2)
+# get original data
+img_original = model.generate(output_shape=(256, 256), latents=z)
+# >> (1, 256, 256, 3)
+img_super_res = model.generate(output_shape=(1024,1024), latents=z) 
+# >> (1, 1024, 1024, 3)
+axes[0].imshow(img_original.squeeze())
+axes[1].imshow(img_super_res.squeeze())
+axes[0].set_title('QSIREN image fit 256x256')
+axes[1].set_title('QSIREN image fit 1024x1024')
+plt.show()
+
 model = INRF2D(device='cpu') # or 'cuda'
 
 model.init_map_fn(activations='GELU',
@@ -110,40 +164,9 @@ img_super_res = model.generate(output_shape=(1024,1024), sample_latent=True)
 fig, axes = plt.subplots(1, 2)
 axes[0].imshow(img_original.squeeze())
 axes[1].imshow(img_super_res.squeeze())
-axes[0].set_title('image fit 256x256')
-axes[1].set_title('image fit 1024x1024')
+axes[0].set_title('DIP image fit 256x256')
+axes[1].set_title('DIP image fit 1024x1024')
 plt.show()
-
-model = INRF2D(device='cpu', latent_dim=128) # or 'cuda'
-model.init_map_fn(activations='siren', 
-                  weight_init='siren', 
-                  graph_topology='siren', 
-                  final_activation='tanh',
-                  num_fourier_freqs=None,
-                  mlp_layer_width=128,
-                  input_encoding_dim=1) # better params for fitting
-loss = LossModule(l2_alpha=1.0)
-_, _, _, z = model.fit(img, loss=loss, n_iters=1000, trainable_latent=True)  
-# returns a implicit neural representation of the image
-
-print ('INRF (SIREN) size', model.size)  # return size of neural representation
-# >> 30083
-print ('data size', np.prod(img.shape))
-# >> 196608
-
-# get original data
-img_original = model.generate(output_shape=(256, 256), latents=z)
-# >> (1, 256, 256, 3)
-img_super_res = model.generate(output_shape=(1024,1024), latents=z) 
-# >> (1, 1024, 1024, 3)
-
-fig, axes = plt.subplots(1, 2)
-axes[0].imshow(img_original.squeeze())
-axes[1].imshow(img_super_res.squeeze())
-axes[0].set_title('SIREN image fit 256x256')
-axes[1].set_title('SIREN image fit 1024x1024')
-plt.show()
-
 
 
 ##
