@@ -119,6 +119,8 @@ class RunnerLightning2D:
         """
         if metadata is None:
             _, metadata = utils.load_tif_metadata(path)
+        if metadata['graph'] is not None:
+            return None
         assert len(output_shape) == 3, f'Invalid output shape: {output_shape}, need ndim=3'
         model = LightningModel2D(output_shape=output_shape,
                        output_dir=self.output_dir,

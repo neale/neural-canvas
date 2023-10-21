@@ -144,8 +144,16 @@ class LightningModel2D(LightningModelBase):
         elif self.weight_init == 'uniform':
             self.map_fn = weight_inits.init_weights_uniform(
                 self.map_fn, self.weight_init_min, self.weight_init_max)
+        elif self.weight_init == 'xavier':
+            self.map_fn = weight_inits.init_weights_xavier(
+                self.map_fn, self.weight_init_min, self.weight_init_max)
+        elif self.weight_init == 'kaiming':
+            self.map_fn = weight_inits.init_weights_kaiming(
+                self.map_fn, self.weight_init_min, self.weight_init_max)        
         else:
             self.logger.info(f'weight init `{self.weight_init}` not implemented')
+        torch.nn.init.orthogonal_(self.map_fn.linear_out.weight.data, 
+                                    gain=torch.nn.init.calculate_gain('tanh')) 
         self.map_fn = self.map_fn.to(self.device)
 
     def init_map_fn(self,
@@ -154,6 +162,7 @@ class LightningModel2D(LightningModelBase):
                     input_encoding_dim=1,
                     activations='fixed',
                     final_activation='sigmoid',
+                    layer_aggregation='linear',
                     weight_init='normal',
                     graph_topology='mlp',
                     num_graph_nodes=10,
@@ -192,7 +201,8 @@ class LightningModel2D(LightningModelBase):
             map_fn = INRLinearMap(
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
                 input_encoding_dim=input_encoding_dim,
-                activations=activations, final_activation=final_activation)
+                activations=activations, final_activation=final_activation,
+                layer_aggregation=layer_aggregation)
 
             
         elif graph_topology == 'WS':
@@ -213,6 +223,7 @@ class LightningModel2D(LightningModelBase):
         self.input_encoding_dim = input_encoding_dim
         self.activations = activations
         self.final_activation = final_activation
+        self.layer_aggregation = layer_aggregation
         self.weight_init = weight_init
         self.graph_topology = graph_topology
         self.num_graph_nodes = num_graph_nodes
@@ -284,7 +295,7 @@ class LightningModel2D(LightningModelBase):
             x_dim, y_dim = self.x_dim, self.y_dim
 
         if reuse_latents is not None:
-            latents = reuse_latents
+            latents = reuse_latents.copy()
         else:
             latents = {'base_shape':(x_dim, y_dim), 'sample_shape': (x_dim, y_dim)}
         if generator is None:
@@ -333,5 +344,5 @@ class LightningModel2D(LightningModelBase):
         # generate
         frame = self.map_fn(field, latent)
         frame = frame.reshape(output_shape)
-        return unnormalize_and_numpy(frame, output_activation=self.final_activation)
+        return unnormalize_and_numpy(frame)
 

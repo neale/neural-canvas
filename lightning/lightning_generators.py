@@ -5,11 +5,26 @@ from einops import rearrange
 
 from neural_canvas.models.ops import (
     ScaleAct,
+    AddAct,
     Gaussian,
     SinLayer,
     CosLayer,
 )
 from neural_canvas.models.torchgraph import randact, build_random_graph, TorchGraph
+
+
+def randact(activation_set='large'):
+    if activation_set == 'large':
+        acts = [nn.Tanh]
+        #acts = [nn.ELU, #nn.Hardtanh, nn.LeakyReLU, nn.LogSigmoid,
+        #        #nn.SELU, nn.GELU, nn.CELU, nn.Softshrink, nn.Sigmoid,
+        #        SinLayer, CosLayer, nn.Softplus, nn.ELU, nn.Tanh, Gaussian, ScaleAct, AddAct]
+    else:
+        acts = [nn.Sigmoid, SinLayer, CosLayer, Gaussian, nn.Softplus,
+                nn.Tanh, ScaleAct, AddAct]
+
+    x = torch.randint(0, len(acts), (1,))
+    return acts[x]()
 
 
 class INRRandomGraph(nn.Module):
@@ -121,6 +136,7 @@ class INRLinearMap(nn.Module):
                  input_encoding_dim,
                  activations='fixed',
                  final_activation='sigmoid',
+                 layer_aggregation='linear',
                  name='INRLinearMap'):
         super(INRLinearMap, self).__init__()
         self.latent_dim = latent_dim
@@ -129,19 +145,26 @@ class INRLinearMap(nn.Module):
         self.input_encoding_dim = input_encoding_dim
         self.activations = activations
         self.final_activation = final_activation
+        self.layer_aggregation = layer_aggregation
 
         self.name = name
 
         self.linear_latents = nn.Linear(self.latent_dim, self.layer_width)
-        self.linear_x = nn.Linear(self.input_encoding_dim, self.layer_width, bias=False)
-        self.linear_y = nn.Linear(self.input_encoding_dim, self.layer_width, bias=False)
-        self.linear_r = nn.Linear(self.input_encoding_dim, self.layer_width, bias=False)
-
-        self.linear1 = nn.Linear(self.layer_width, self.layer_width)
-        self.linear2 = nn.Linear(self.layer_width, self.layer_width)
-        self.linear3 = nn.Linear(self.layer_width, self.layer_width)
-        self.linear4 = nn.Linear(self.layer_width, self.c_dim)
-
+        self.linear_x = nn.Linear(self.input_encoding_dim, self.layer_width)#, bias=False)
+        self.linear_y = nn.Linear(self.input_encoding_dim, self.layer_width)#, bias=False)
+        self.linear_r = nn.Linear(self.input_encoding_dim, self.layer_width)#, bias=False)
+        self.linear_a = nn.Linear(self.input_encoding_dim*3+self.latent_dim, self.layer_width)#, bias=False)
+        
+        if self.layer_aggregation == 'linear':
+            self.linear1 = nn.Linear(self.layer_width, self.layer_width)
+            self.linear2 = nn.Linear(self.layer_width, self.layer_width)
+            self.linear3 = nn.Linear(self.layer_width, self.layer_width)
+            self.linear_out = nn.Linear(self.layer_width, self.c_dim)
+        elif self.layer_aggregation == 'cat':
+            self.linear1 = nn.Linear(self.layer_width+self.linear_a.in_features, self.layer_width)
+            self.linear2 = nn.Linear(self.layer_width+self.linear1.in_features, self.layer_width)
+            self.linear3 = nn.Linear(self.layer_width+self.linear2.in_features, self.layer_width)
+            self.linear_out = nn.Linear(self.layer_width+self.linear3.in_features, self.c_dim)
         if self.activations == 'random':
             acts = [randact(activation_set='large') for _ in range(9)]
         elif self.activations == 'fixed':
@@ -186,7 +209,7 @@ class INRLinearMap(nn.Module):
         g.bgcolor = "transparent"
 
         return g
- 
+    """
     def forward(self, fields, latents=None):
         #TODO refactor this to look better, its clunky to support positional encodings
         if fields.ndim == 4: # after positional encoding
@@ -204,12 +227,42 @@ class INRLinearMap(nn.Module):
             z += self.acts[3](self.linear_latents(latents))
         z = self.acts[4](z)
         z = self.acts[5](self.linear1(z))
-        z = self.acts[6](self.linear2(z))
-        z = self.acts[7](self.linear3(z))
+        z = self.acts[6](self.linear1(z))
+        z = self.acts[7](self.linear1(z))
         z_out = self.act_out(self.linear4(z))
         return z_out
+    """
+    def forward(self, fields, latents=None):
+        #TODO refactor this to look better, its clunky to support positional encodings
+        if fields.ndim == 4: # after positional encoding
+            chunk_size = fields.shape[1]//3
+            x = fields[:, :chunk_size, :, 0].permute(0, 2, 1)
+            y = fields[:, chunk_size:2*chunk_size, :, 0].permute(0, 2, 1)
+            r = fields[:, chunk_size*2:, :, 0].permute(0, 2, 1)
+        else:
+            x, y, r = fields[:, 0, ...], fields[:, 1, ...], fields[:, 2, ...]
+        a = torch.cat([x, y, r, latents], dim=1)
+        #print (f'a shape: {a.shape}')
+        #x_pt = self.acts[0](self.linear_x(x))
+        #y_pt = self.acts[1](self.linear_y(y))
+        #r_pt = self.acts[2](self.linear_r(r))
+        #z = x_pt * y_pt * r_pt
 
+        z = torch.tanh(self.linear_a(a))
+        if self.layer_aggregation == 'cat':
+            z = torch.cat([a, z], -1)
+        z2 = self.acts[5](self.linear1(z))
+        if self.layer_aggregation == 'cat':
+            z2 = torch.cat([z, z2], -1)
+        z3 = self.acts[6](self.linear2(z2)) 
+        if self.layer_aggregation == 'cat':
+            z3 = torch.cat([z2, z3], -1)
+        z4 = self.acts[6](self.linear3(z3)) 
+        if self.layer_aggregation == 'cat':
+            z4 = torch.cat([z3, z4], -1)
 
+        z_out = self.act_out(self.linear_out(z4))
+        return z_out
     
 
 if __name__ == '__main__':

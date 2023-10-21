@@ -40,14 +40,12 @@ def load_image_as_tensor(path, output_dir='/tmp', device='cpu'):
     return target
 
 
-def unnormalize_and_numpy(x, output_activation='tanh'):
+def unnormalize_and_numpy(x):
     x = x.detach().cpu().numpy()
-    if output_activation == 'tanh':
-        x = ((x + 1.) * 127.5).astype(np.uint8)
-    elif output_activation == 'sigmoid':
-        x = (x * 255.).astype(np.uint8)
-    else:
-        x = (x * (255./x.max())).astype(np.uint8)
+    x = (x - x.min()) / (x.ptp() + 1e-10)
+    x += (np.random.random(x.shape) - 0.5) * (2.0 / 256)
+    x = np.clip(x, 0, 1)
+    x = (x * 255.).astype(np.uint8)
     return x
 
 

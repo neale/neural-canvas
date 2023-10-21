@@ -27,7 +27,45 @@ def init_weights_normal(module, means, stds):
 
     return module
 
+def init_weights_xavier(module, means, stds):
+    if len(list(module.modules())) == 0:
+        warnings.warn('No modules found to init. Returning module unchanged.')
+        return module
+    if not hasattr(means, '__iter__'):
+        means = [means] * len(list(module.modules()))
+    if not hasattr(stds, '__iter__'):
+        stds = [stds] * len(list(module.modules()))
+    for i, layer in enumerate(module.modules()):
+        if isinstance(layer, nn.Linear):
+            nn.init.xavier_normal_(layer.weight.data)
+            if hasattr(layer.bias, 'data'):
+                nn.init.constant_(layer.bias.data, 0.0)
+        elif isinstance(layer, nn.Conv2d):
+            nn.init.xavier_normal_(layer.weight.data)
+            if hasattr(layer.bias, 'data'):
+                nn.init.constant_(layer.bias.data, 0.0)
 
+    return module
+
+def init_weights_kaiming(module, means, stds):
+    if len(list(module.modules())) == 0:
+        warnings.warn('No modules found to init. Returning module unchanged.')
+        return module
+    if not hasattr(means, '__iter__'):
+        means = [means] * len(list(module.modules()))
+    if not hasattr(stds, '__iter__'):
+        stds = [stds] * len(list(module.modules()))
+    for i, layer in enumerate(module.modules()):
+        if isinstance(layer, nn.Linear):
+            nn.init.kaiming_normal_(layer.weight.data)
+            if hasattr(layer.bias, 'data'):
+                nn.init.constant_(layer.bias.data, 0.0)
+        elif isinstance(layer, nn.Conv2d):
+            nn.init.kaiming_normal_(layer.weight.data)
+            if hasattr(layer.bias, 'data'):
+                nn.init.constant_(layer.bias.data, 0.0)
+
+    return module
 def init_weights_uniform(module, mins, maxs):
     if len(list(module.modules())) == 0:
         warnings.warn('No modules found to init. Returning module unchanged.')
