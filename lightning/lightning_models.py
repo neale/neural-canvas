@@ -5,9 +5,10 @@ import logging
 
 
 import neural_canvas.models.weight_inits as weight_inits
-from lightning_generators import INRRandomGraph, INRLinearMap
+from lightning.lightning_generators_2d import INRRandomGraph, INRLinearMap
+from lightning.lightning_generators_3d import INRLinearMap3D, INRRandomGraph3D
 from lightning_model_base import LightningModelBase
-from neural_canvas.utils.positional_encodings import coordinates_2D
+from neural_canvas.utils.positional_encodings import coordinates_2D, coordinates_3D
 from neural_canvas.utils import unnormalize_and_numpy
 
 
@@ -136,6 +137,7 @@ class LightningModel2D(LightningModelBase):
         # returns the fields characterized by this INRF
         return self.construct_fields() 
     
+    @torch.no_grad()
     def init_map_weights(self):
         # initialize weights
         if self.weight_init == 'normal':
@@ -152,17 +154,18 @@ class LightningModel2D(LightningModelBase):
                 self.map_fn, self.weight_init_min, self.weight_init_max)        
         else:
             self.logger.info(f'weight init `{self.weight_init}` not implemented')
-        torch.nn.init.orthogonal_(self.map_fn.linear_out.weight.data, 
-                                    gain=torch.nn.init.calculate_gain('tanh')) 
+        #torch.nn.init.orthogonal_(self.map_fn.backbone.layer_out.weight.data) 
         self.map_fn = self.map_fn.to(self.device)
 
+    @torch.no_grad()
     def init_map_fn(self,
                     mlp_layer_width=32,
                     conv_feature_map_size=32,
                     input_encoding_dim=1,
                     activations='fixed',
                     final_activation='sigmoid',
-                    layer_aggregation='linear',
+                    backbone='straight',
+                    num_layers=3,
                     weight_init='normal',
                     graph_topology='mlp',
                     num_graph_nodes=10,
@@ -201,8 +204,8 @@ class LightningModel2D(LightningModelBase):
             map_fn = INRLinearMap(
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
                 input_encoding_dim=input_encoding_dim,
-                activations=activations, final_activation=final_activation,
-                layer_aggregation=layer_aggregation)
+                activations=activations, backbone=backbone, num_layers=num_layers,
+                final_activation=final_activation, device=self.device)
 
             
         elif graph_topology == 'WS':
@@ -210,9 +213,10 @@ class LightningModel2D(LightningModelBase):
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
                 input_encoding_dim=input_encoding_dim,
                 num_graph_nodes=num_graph_nodes, graph=graph,
-                activations=activations, final_activation=final_activation)
+                activations=activations, final_activation=final_activation, 
+                backbone=backbone, num_layers=num_layers, device=self.device)
 
-        else:
+        else: 
             raise NotImplementedError(f'Graph topology `{graph_topology}` not implemented')
     
         self.fourier_encoding = None
@@ -223,7 +227,8 @@ class LightningModel2D(LightningModelBase):
         self.input_encoding_dim = input_encoding_dim
         self.activations = activations
         self.final_activation = final_activation
-        self.layer_aggregation = layer_aggregation
+        self.backbone = backbone
+        self.num_layers = num_layers
         self.weight_init = weight_init
         self.graph_topology = graph_topology
         self.num_graph_nodes = num_graph_nodes
@@ -234,9 +239,11 @@ class LightningModel2D(LightningModelBase):
         self.num_siren_layers = None
         self.siren_scale = None
         self.siren_scale_init = None
+
         self.map_fn = map_fn
         self.init_map_weights()
 
+    @torch.no_grad()
     def construct_fields(self,
                          output_shape=None,
                          zoom=(.5, .5),
@@ -302,17 +309,17 @@ class LightningModel2D(LightningModelBase):
             generator = lambda x: x.uniform_(-2, 2)
 
         if 'sample' not in latents.keys():
-            sample = torch.ones(batch_size, 1, self.latent_dim)
+            sample = torch.ones(batch_size, 1, self.latent_dim, device=self.device)
             sample = generator(sample)
-            latents['sample'] = sample.to(self.device)
+            latents['sample'] = sample
         if self.graph_topology == 'siren':
             latents['input'] = latents['sample']
         else:
-            one_vec = torch.ones(x_dim*y_dim, 1).float().to(self.device)
+            one_vec = torch.ones(x_dim*y_dim, 1, dtype=torch.float32, device=self.device)
             latents['input'] = torch.matmul(one_vec, latents['sample']) * self.latent_scale
-        latents['input'] = latents['input'].to(self.device)
         return latents
 
+    @torch.no_grad()
     def generate(self, fields, latents):
         """
         samples from the forward map
@@ -345,4 +352,335 @@ class LightningModel2D(LightningModelBase):
         frame = self.map_fn(field, latent)
         frame = frame.reshape(output_shape)
         return unnormalize_and_numpy(frame)
+
+
+class LightningModel3D(LightningModelBase):
+    """initializes a 3D Implicit Neural Representation (INR) model
+    
+    Args:
+        latent_dim (int, optional): dimensionality of latent vector
+        latent_scale (float, optional): scale of latent vector
+        output_shape (tuple[int], optional): shape of output image
+        output_dir (str, optional): directory to save outputs
+        tmp_dir (str, optional): directory to save temporary files
+        seed_gen (int, optional): seed for random number generator
+        seed (int, optional): set seed directly
+        device (str, optional): device to use for torch
+    """
+    def __init__(self,
+                 latent_dim=8,
+                 latent_scale=1.0,
+                 output_shape=(256,256,256,3),
+                 graph_topology='mlp',
+                 output_dir='./outputs',
+                 tmp_dir='./tmp',
+                 seed_gen=987654321,
+                 seed=None,
+                 device='cpu'):
+    
+        self.latent_dim = latent_dim
+        if len(output_shape) == 3:
+            self.x_dim, self.y_dim, self.z_dim = output_shape
+            self.c_dim = 1
+        if len(output_shape) == 4:
+            self.x_dim, self.y_dim, self.z_dim, self.c_dim = output_shape
+        else:
+            raise ValueError(f'output_shape must be of length 3 or 4, got `{len(output_shape)}`') 
+        self.latent_scale = latent_scale
+        self.output_dir = output_dir
+        self.tmp_dir = tmp_dir
+        self.device = device
+        self.seed = seed
+        self.seed_gen = seed_gen
+        
+        self.logger = logging.getLogger('LightningModel3D')
+        self.logger.setLevel(logging.INFO)
+        self._init_random_seed(seed=seed)
+        self._init_paths()
+
+        self.init_map_fn(graph_topology=graph_topology)
+
+    def _init_random_seed(self, seed=None):
+        """ 
+        initializes random seed for torch. Random seed needs
+            to be a stored value so that we can save the right metadata. 
+            This is not to be confused with the uid that is not a seed, 
+            rather how we associate user sessions with data
+        """
+        if seed == None:
+            self.logger.debug(f'initing with seed gen: {self.seed_gen}')
+            self.seed = np.random.randint(self.seed_gen)
+            torch.manual_seed(self.seed)
+        else:
+            torch.manual_seed(self.seed)
+
+    def _init_paths(self):
+        """
+        initializes paths for saving data
+        """
+        os.makedirs(self.output_dir, exist_ok=True)
+        os.makedirs(self.tmp_dir, exist_ok=True)
+        os.makedirs(os.path.join(self.tmp_dir, self.output_dir), exist_ok=True)
+
+    def _metadata(self, latent=None):
+        """
+        returns metadata for the model
+        """
+        metadata = {
+            'latent_dim': self.latent_dim,
+            'latent_scale': self.latent_scale,
+            'x_dim': self.x_dim,
+            'y_dim': self.y_dim,
+            'z_dim': self.z_dim,
+            'c_dim': self.c_dim,
+            'seed': self.seed,
+            'device': self.device,
+        }
+        if self.map_fn is not None:
+            metadata['mlp_layer_width'] = self.mlp_layer_width
+            metadata['conv_feature_map_size'] = self.conv_feature_map_size
+            metadata['input_encoding_dim'] = self.input_encoding_dim
+            metadata['activations'] = self.activations
+            metadata['final_activation'] = self.final_activation
+            metadata['weight_init'] = self.weight_init
+            metadata['graph_topology'] = self.graph_topology
+            metadata['num_graph_nodes'] = self.num_graph_nodes
+            metadata['weight_init_mean'] = self.weight_init_mean
+            metadata['weight_init_std'] = self.weight_init_std
+            metadata['weight_init_min'] = self.weight_init_min
+            metadata['weight_init_max'] = self.weight_init_max
+
+            if hasattr(self.map_fn, 'get_graph_str'):
+                metadata['graph'] = self.map_fn.get_graph_str()
+
+        if latent is not None:
+            metadata['latents'] = latent['sample'].detach().cpu().tolist()
+        return metadata
+    
+    @property
+    def size(self):
+        # print number of parameters in map_fn
+        if self.map_fn is None:
+            num_params = 0
+        else:
+            num_params = sum(p.numel() for p in self.map_fn.parameters() if p.requires_grad)
+        return num_params
+    
+    @property
+    def data(self):
+        # returns the data characterized by this INRF
+        fields = self.construct_fields()
+        data = self.map_fn(fields=fields['coords'])
+        return data
+    
+    @property
+    def fields(self):
+        # returns the fields characterized by this INRF
+        return self.construct_fields()
+
+    @torch.no_grad()
+    def init_map_weights(self):
+        # initialize weights
+        if self.weight_init == 'normal':
+            self.map_fn = weight_inits.init_weights_normal(
+                self.map_fn, self.weight_init_mean, self.weight_init_std)
+        elif self.weight_init == 'uniform':
+            self.map_fn = weight_inits.init_weights_uniform(
+                self.map_fn, self.weight_init_min, self.weight_init_max)
+        elif self.weight_init == 'xavier':
+            self.map_fn = weight_inits.init_weights_xavier(
+                self.map_fn, self.weight_init_min, self.weight_init_max)
+        elif self.weight_init == 'kaiming':
+            self.map_fn = weight_inits.init_weights_kaiming(
+                self.map_fn, self.weight_init_min, self.weight_init_max)     
+        else:
+            self.logger.info(f'weight init `{self.weight_init}` not implemented')
+ 
+        self.map_fn = self.map_fn.to(self.device)
+
+    @torch.no_grad()
+    def init_map_fn(self,
+                    mlp_layer_width=32,
+                    conv_feature_map_size=64,
+                    input_encoding_dim=1,
+                    activations='fixed',
+                    final_activation='sigmoid',
+                    backbone='straight',
+                    num_layers=3,
+                    weight_init='normal',
+                    graph_topology='mlp',
+                    num_graph_nodes=10,
+                    weight_init_mean=0,
+                    weight_init_std=1,
+                    weight_init_min=-2,
+                    weight_init_max=2,
+                    graph=None):
+        """
+        initializes the forward map function of the implicit neural representation
+        Args: 
+            mlp_layer_width (int): width of the layers in the MLP
+            conv_feature_map_size (int): number of feature maps in the convolutional layers
+            input_encoding_dim (int): dimension of the input encoding
+            activations (str): 'fixed', 'random', or instance of torch.nn: denotes the type
+                of activation functions used in the forward map
+            final_activation (str): 'sigmoid', 'tanh', 'relu', or instance of torch.nn: denotes
+                the type of activation function used in the final layer of the forward map
+            weight_init (str): 'normal', 'uniform', or instance of torch.nn.init: denotes the
+                type of weight initialization used in the forward map
+            graph_topology (str): 'mlp', 'conv', 'ws': denotes the type
+                of graph topology used in the forward map
+            num_graph_nodes (int): number of nodes in the graph
+            weight_init_mean (float): mean of the weight initialization
+            weight_init_std (float): standard deviation of the weight initialization
+            weight_init_min (float): minimum value of the weight initialization
+            weight_init_max (float): maximum value of the weight initialization
+            graph (torch.Tensor): networkx string representation of the graph
+        """
+        if graph_topology == 'mlp':
+            map_fn = INRLinearMap3D(
+                self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
+                input_encoding_dim=input_encoding_dim,
+                activations=activations, final_activation=final_activation,
+                backbone=backbone, num_layers=num_layers, device=self.device)
+            
+        elif graph_topology == 'WS':
+            map_fn = INRRandomGraph3D(
+                self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
+                num_graph_nodes=num_graph_nodes, graph=graph,
+                input_encoding_dim=input_encoding_dim,
+                activations=activations, final_activation=final_activation,
+                backbone=backbone, num_layers=num_layers, device=self.device)
+        else:
+            raise NotImplementedError(f'Graph topology `{graph_topology}` not implemented')
+
+        self.fourier_encoding = None
+
+        # initialize weights
+        self.mlp_layer_width = mlp_layer_width
+        self.conv_feature_map_size = conv_feature_map_size
+        self.input_encoding_dim = input_encoding_dim
+        self.activations = activations
+        self.final_activation = final_activation
+        self.backbone = backbone
+        self.num_layers = num_layers
+        self.weight_init = weight_init
+        self.graph_topology = graph_topology
+        self.num_graph_nodes = num_graph_nodes
+        self.weight_init_mean = weight_init_mean
+        self.weight_init_std = weight_init_std
+        self.weight_init_min = weight_init_min
+        self.weight_init_max = weight_init_max
+
+        self.map_fn = map_fn
+        self.init_map_weights()
+
+    @torch.no_grad()
+    def construct_fields(self,
+                         output_shape=None,
+                         zoom=(.5, .5, .5),
+                         pan=(2, 2, 2),
+                         coord_fn=None):
+        if output_shape is not None:
+            assert len(output_shape) in [3, 4], f'output_shape must be 2D or 3D, got `{output_shape}`'
+            if len(output_shape) == 4:
+                batch_size = output_shape[0]
+            else:
+                batch_size = 1
+            x_dim, y_dim, z_dim = output_shape[-3], output_shape[-2], output_shape[-1]
+        else:
+            batch_size = 1
+            x_dim, y_dim, z_dim = self.x_dim, self.y_dim, self.z_dim
+        assert len(zoom) == 3, f'zoom direction must be 3D, got `{zoom}`'
+        assert len(pan) == 3, f'pan direction must be 3D, got `{pan}`'
+        if coord_fn is not None:
+            coords = coord_fn(x_dim, y_dim, z_dim, batch_size=batch_size)
+        else:
+            fields = coordinates_3D(x_dim, 
+                                    y_dim,
+                                    z_dim,
+                                    batch_size=batch_size,
+                                    zoom=zoom,
+                                    pan=pan,
+                                    scale=self.latent_scale,
+                                    as_mat=True)
+            coords = torch.stack(fields, 0).unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
+        fields = {'coords': coords.to(self.device), 
+                  'shape': (batch_size, x_dim, y_dim, z_dim),
+                  'zoom': zoom,
+                  'pan': pan}
+        return fields
+    
+    @torch.no_grad()
+    def sample_latents(self, reuse_latents=None, output_shape=None, generator=None):
+        """
+        initializes latent inputs for the forward map
+        Args:
+            reuse_latents (dict): latent inputs if initialized previously, if provided then 
+                this will use the data of the previous inputs to initialize the new inputs
+            output_shape (tuple(int), Optional): dimensions of forward map output. If not provided,
+                then the dimensions of the forward map output are assumed to be
+                `self.x_dim` and `self.y_dim`
+        Returns:
+            latents (dict): latent input information
+        """
+        if output_shape is not None:
+            assert len(output_shape) in [3, 4], 'output_shape must be 3D or 4D'
+            if len(output_shape) == 4:
+                batch_size = output_shape[0]
+            else:
+                batch_size = 1
+            x_dim, y_dim, z_dim = output_shape[-3], output_shape[-2], output_shape[-1]
+        else:
+            batch_size = 1
+            x_dim, y_dim, z_dim = self.x_dim, self.y_dim, self.z_dim
+
+        if reuse_latents is not None:
+            latents = reuse_latents.copy()
+        else:
+            latents = {'base_shape':(x_dim, y_dim, z_dim),
+                       'sample_shape': (x_dim, y_dim, z_dim)}
+        if generator is None:
+            generator = lambda x: x.uniform_(-2, 2)
+
+        if self.graph_topology == 'conv':  #
+            sample = torch.ones(batch_size, self.latent_dim, x_dim, y_dim, z_dim)
+            latents['sample'] = sample.uniform_(-1, 1)
+            latents['inputs'] = latents['sample'].clone()
+        else:
+            if 'sample' not in latents.keys():
+                sample = torch.ones(batch_size, 1, self.latent_dim, device=self.device)
+                sample = generator(sample)
+                latents['sample'] = sample
+            one_vec = torch.ones(x_dim*y_dim*z_dim, 1, dtype=torch.float32, device=self.device)
+            latents['input'] = torch.matmul(one_vec, latents['sample']) * self.latent_scale            
+        return latents
+    
+    @torch.no_grad()
+    def generate(self, fields=None, latents=None):
+        """
+        samples from the forward map
+        Args:
+            latents (torch tensor): latent input information for the forward map
+            fields (torch.tensor) of size (B, N, H, W, D) that represents a Batch of N inputs
+                that may represent X, Y, Z, R, or any other input of shape (H, W, D) that matches
+                the desired output shape. 
+            output_shape (tuple(int), Optional): dimensions of forward map output. If not provided,
+                then the dimensions of the forward map output are assumed to be
+                (`self.x_dim`, `self.y_dim`, self.z_dim`)
+        Returns:
+            volume (torch tensor): sampled volume
+        """
+        output_shape = fields['shape'] + (self.c_dim,)
+
+        if latents is not None:
+            latent = latents['input']
+        latent = latent.reshape(-1, self.latent_dim)
+
+        fields = fields['coords']
+        fields = fields.reshape(1, fields.shape[1], -1)
+        fields = fields.transpose(0, 2)
+        volume = self.map_fn(fields, latent)
+
+        volume = volume.reshape(output_shape)
+        return unnormalize_and_numpy(volume)
 

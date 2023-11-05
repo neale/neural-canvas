@@ -22,6 +22,7 @@ class INRRandomGraph(nn.Module):
                  graph=None,
                  activations='fixed',
                  final_activation='sigmoid',
+                 device='cpu',
                  name='INRRandomGraph'):
         super(INRRandomGraph, self).__init__()
         self.latent_dim = latent_dim
@@ -34,6 +35,7 @@ class INRRandomGraph(nn.Module):
         self.nodes = num_graph_nodes
         self.activations = activations
         self.final_activation = final_activation
+        self.device = device
 
         self.name = name
         self.linear_latents = nn.Linear(self.latent_dim, self.layer_width)
@@ -42,9 +44,9 @@ class INRRandomGraph(nn.Module):
         self.linear_r = nn.Linear(self.input_encoding_dim, self.layer_width, bias=False)
         self.linear1 = nn.Linear(self.layer_width, self.layer_width)
         self.linear2 = nn.Linear(self.layer_width, self.layer_width)
-        self.scale = ScaleAct()
+        self.scale = ScaleAct(device)
         if self.activations == 'random':
-            acts = [randact(activation_set='large') for _ in range(7)]
+            acts = [randact(activation_set='large', device=device) for _ in range(7)]
         elif self.activations == 'fixed':
             acts = [nn.Tanh(), nn.ELU(), nn.Softplus(), nn.Tanh(), 
                     Gaussian(), SinLayer(), nn.Tanh()]
@@ -87,7 +89,7 @@ class INRRandomGraph(nn.Module):
         print (self.graph)
         
     def generate_act_list(self):
-        acts = [randact(activation_set='large') for _ in range(7)]
+        acts = [randact(activation_set='large', device=self.device) for _ in range(7)]
         self.acts = nn.ModuleList(acts)    
 
     def get_graph_str(self):
@@ -181,6 +183,7 @@ class INRLinearMap(nn.Module):
                  input_encoding_dim,
                  activations='fixed',
                  final_activation='sigmoid',
+                 device='cpu',
                  name='INRLinearMap'):
         super(INRLinearMap, self).__init__()
         self.latent_dim = latent_dim
@@ -189,6 +192,7 @@ class INRLinearMap(nn.Module):
         self.input_encoding_dim = input_encoding_dim
         self.activations = activations
         self.final_activation = final_activation
+        self.device = device
 
         self.name = name
 
@@ -203,10 +207,10 @@ class INRLinearMap(nn.Module):
         self.linear4 = nn.Linear(self.layer_width, self.c_dim)
 
         if self.activations == 'random':
-            acts = [randact(activation_set='large') for _ in range(9)]
+            acts = [randact(activation_set='large', device=device) for _ in range(9)]
         elif self.activations == 'fixed':
-            acts = [ScaleAct(), nn.Softplus(), nn.Tanh(), SinLayer(), 
-                    nn.GELU(), nn.Softplus(), nn.Tanh(), SinLayer(), ScaleAct()]
+            acts = [ScaleAct(device), nn.Softplus(), nn.Tanh(), SinLayer(), 
+                    nn.GELU(), nn.Softplus(), nn.Tanh(), SinLayer(), ScaleAct(device)]
         elif hasattr(torch.nn, activations):
             acts = [getattr(torch.nn, activations)() for _ in range(9)]
         else:
@@ -222,7 +226,7 @@ class INRLinearMap(nn.Module):
             self.act_out = nn.Identity()
 
     def generate_new_acts(self):
-        acts = [randact(activation_set='large') for _ in range(9)]
+        acts = [randact(activation_set='large', device=self.device) for _ in range(9)]
         self.acts = nn.ModuleList(acts)    
 
     def get_graph(self):
@@ -363,7 +367,8 @@ class SIREN(nn.Module):
         
         self.final_layer = nn.Linear(self.layer_width, self.c_dim, bias=bias)
         self.layers = nn.ModuleList([nn.Linear(self.input_encoding_dim, self.layer_width, bias=bias)])
-        self.acts = nn.ModuleList([SinLayer(scale_init)] + [SinLayer(scale) for _ in range(num_layers)])
+        #self.acts = nn.ModuleList([SinLayer(scale_init)] + [SinLayer(scale) for _ in range(num_layers)])
+        self.acts = nn.ModuleList([nn.Tanh()] + [nn.Tanh() for _ in range(num_layers)])
 
         for _ in range(num_layers-1):
             self.layers.append(nn.Linear(self.layer_width, self.layer_width, bias=bias))
@@ -374,7 +379,7 @@ class SIREN(nn.Module):
                 self.latent_maps.append(nn.Linear(self.layer_width+self.latent_dim,
                                                   self.layer_width,
                                                   bias=bias))
-            self.latent_acts = nn.ModuleList([nn.ELU() for _ in range(num_layers)])
+            self.latent_acts = nn.ModuleList([nn.Tanh() for _ in range(num_layers)])
         
         if final_activation == 'tanh':
             self.act_out = torch.tanh

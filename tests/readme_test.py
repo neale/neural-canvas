@@ -5,7 +5,7 @@ from neural_canvas.models.inrf import INRF2D
 
 np.random.seed(42)
 torch.manual_seed(42)
-
+"""
 # Create a 2D implicit neural representation model
 model = INRF2D()
 # Generate the image given by the random INRF
@@ -85,11 +85,12 @@ axes[1].set_title('Conv Gen image')
 plt.show()
 ##
 ##
+"""
 from neural_canvas.utils import load_image_as_tensor
 from neural_canvas.losses import LossModule
 
 img = load_image_as_tensor('neural_canvas/assets/logo.jpg')[0]
-
+"""
 model = INRF2D(device='cpu', latent_dim=128) # or 'cuda'
 model.init_map_fn(activations='siren', 
                   weight_init='siren', 
@@ -142,10 +143,10 @@ axes[1].imshow(img_super_res.squeeze())
 axes[0].set_title('QSIREN image fit 256x256')
 axes[1].set_title('QSIREN image fit 1024x1024')
 plt.show()
-
+"""
 model = INRF2D(device='cpu') # or 'cuda'
 
-model.init_map_fn(activations='GELU',
+model.init_map_fn(activations='Tanh',
                   weight_init='dip' ,
                   graph_topology='conv',
                   final_activation='tanh',
@@ -154,7 +155,7 @@ model.init_map_fn(activations='GELU',
                   input_encoding_dim=16) # better params for fitting
 loss = LossModule(l2_alpha=1.0)
 model.fit(img, loss=loss, n_iters=100)  # returns a implicit neural representation of the image
-
+print (model.map_fn)
 print ('INRF size', model.size)  # return size of neural representation
 print ('data size', np.prod(img.shape))
 

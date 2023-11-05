@@ -209,7 +209,7 @@ class INRF2D(INRFBase):
             map_fn = maps2d.INRLinearMap(
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
                 input_encoding_dim=input_encoding_dim,
-                activations=activations, final_activation=final_activation)
+                activations=activations, final_activation=final_activation, device=self.device)
 
         elif graph_topology == 'conv':
             map_fn = maps2d.INRConvMap(
@@ -222,7 +222,7 @@ class INRF2D(INRFBase):
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
                 input_encoding_dim=input_encoding_dim,
                 num_graph_nodes=num_graph_nodes, graph=graph,
-                activations=activations, final_activation=final_activation)
+                activations=activations, final_activation=final_activation, device=self.device)
         elif graph_topology == 'siren':
             map_fn = maps2d.SIREN(
                 self.latent_dim, self.c_dim, layer_width=mlp_layer_width,
@@ -444,7 +444,7 @@ class INRF2D(INRFBase):
             frame = frame.permute(0, 2, 3, 1) # [B, C, H, W] -> [B, H, W, C]
 
         self.logger.debug(f'Output Frame Shape: {frame.shape}')
-        return unnormalize_and_numpy(frame, output_activation=self.final_activation)
+        return unnormalize_and_numpy(frame)
 
     def fit(self,
             target,
@@ -547,8 +547,8 @@ class INRF2D(INRFBase):
         frame = frame.permute(0, 2, 3, 1)
         test_frame = test_frame.permute(0, 2, 3, 1)
 
-        frame = unnormalize_and_numpy(frame, self.map_fn.final_activation)
-        test_frame = unnormalize_and_numpy(test_frame, self.map_fn.final_activation)
+        frame = unnormalize_and_numpy(frame)
+        test_frame = unnormalize_and_numpy(test_frame)
         return frame, test_frame, loss_val, latents
 
 

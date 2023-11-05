@@ -29,9 +29,9 @@ class CosLayer(nn.Module):
 
 
 class ScaleAct(nn.Module):
-    def __init__(self):
+    def __init__(self, device):
         super(ScaleAct, self).__init__()
-        r = torch.ones(1,).uniform_(1, 10)
+        r = torch.ones(1, device=device).uniform_(1, 10)
         self.r = nn.Parameter(r)
 
     def forward(self, x):
@@ -39,9 +39,9 @@ class ScaleAct(nn.Module):
 
 
 class AddAct(nn.Module):
-    def __init__(self):
+    def __init__(self, device):
         super(AddAct, self).__init__()
-        r = torch.ones(1,).uniform_(1, 10)
+        r = torch.ones(1, device=device).uniform_(1, 10)
         self.r = nn.Parameter(r)
 
     def forward(self, x):

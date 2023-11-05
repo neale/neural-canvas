@@ -9,6 +9,7 @@ import tifffile
 import numpy as np
 import networkx
 import matplotlib.pyplot as plt
+from scipy.interpolate import splev, splprep
 
 
 logging.getLogger().setLevel(logging.ERROR)
@@ -27,6 +28,62 @@ def lerp(z1, z2, n):
     return states
 
 
+@torch.no_grad()
+def slerp(z1, z2, n):
+    # Ensure the points are normalized to lie on the unit sphere
+    z1_norm = z1['sample'] / torch.norm(z1['sample'], p=2, dim=-1, keepdim=True)
+    z2_norm = z2['sample'] / torch.norm(z2['sample'], p=2, dim=-1, keepdim=True)
+    # Calculate the angle between the points
+    dot = torch.clamp(torch.sum(z1_norm * z2_norm, dim=1), -1.0, 1.0)
+    theta = torch.acos(dot)  # angle between input vectors
+    # Create an array of angles from 0 to 2*pi with n points
+    angles = torch.linspace(0, 2 * np.pi, n+1)[:-1]  # remove the last value to prevent duplicating the first point
+    # Use SLERP formula to interpolate
+    sin_theta = torch.sin(theta)
+    slerp_points = []
+    for angle in angles:
+        alpha = torch.sin((1.0 - angle/theta) * theta) / sin_theta
+        beta = torch.sin(angle/theta * theta) / sin_theta
+        slerp_point = alpha * z1_norm + beta * z2_norm
+        zx = {'sample': slerp_point, 'sample_shape': z1['sample_shape']}
+        slerp_points.append(zx)
+    return slerp_points
+
+@torch.no_grad()
+def rspline(z_points, n, degree=3, device='cpu'):
+    # Ensure the spline is closed by duplicating the first point at the end
+    if device != 'cpu':
+        control_points = [z['sample'].detach().to('cpu').numpy() for z in z_points]
+    else:
+        control_points = [z['sample'].numpy() for z in z_points]
+    num_control_points = len(control_points)
+    closed_points = np.stack(control_points)
+    closed_points = np.concatenate([closed_points, control_points[0][None, ...]])
+    original_ndim = closed_points.ndim
+    if closed_points.ndim == 4 and closed_points.shape[1] == 1 and closed_points.shape[2] == 1:
+        closed_points = closed_points.squeeze(1).squeeze(1)
+    # Use scipy's splprep to create a tck representation of the spline, with a periodic condition
+    tck, _ = splprep(closed_points.T, per=True, k=min(degree, num_control_points-1))
+
+    # Sample n points along the spline
+    u_new = np.linspace(0, 1, n)
+    points = np.array(splev(u_new, tck, der=0)).T
+    plt.ion()
+    plt.clf()
+    plt.show()
+    plt.plot(points[:, 0], points[:, 1], color='blue')
+    plt.scatter(points[:, 0], points[:, 1], color='purple')
+    plt.draw()
+    plt.pause(0.5)
+    
+    if original_ndim == 4:
+        points = points[:, None, None, :]
+    states = []
+    for point in points:
+        zx = {'sample': torch.from_numpy(point).float().to(device), 'sample_shape': z_points[0]['sample_shape']}
+        states.append(zx)
+    return states
+
 def load_image_as_tensor(path, output_dir='/tmp', device='cpu'):
     import cv2
     target = cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
@@ -43,7 +100,7 @@ def load_image_as_tensor(path, output_dir='/tmp', device='cpu'):
 def unnormalize_and_numpy(x):
     x = x.detach().cpu().numpy()
     x = (x - x.min()) / (x.ptp() + 1e-10)
-    x += (np.random.random(x.shape) - 0.5) * (2.0 / 256)
+    x += (np.random.random(x.shape) - 0.5) * (5.0 / 256)
     x = np.clip(x, 0, 1)
     x = (x * 255.).astype(np.uint8)
     return x

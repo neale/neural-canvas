@@ -18,6 +18,25 @@ from neural_canvas.models.ops import (
 Node = collections.namedtuple('Node', ['id', 'inputs', 'type'])
 
 
+def randact(activation_set='large', device='cpu'):
+    if activation_set == 'large':
+        acts = [nn.Tanh, nn.ELU, nn.Softplus, nn.ReLU, nn.Hardtanh, nn.Sigmoid, SinLayer, 
+                CosLayer, nn.Softplus, Gaussian, ScaleAct, AddAct,
+        ]
+    elif activation_set == 'start':
+        acts = [nn.Tanh, nn.ELU, nn.Softplus, CosLayer, nn.Softplus, Gaussian]
+    else:
+        acts = [nn.Sigmoid, SinLayer, CosLayer, Gaussian, nn.Softplus, nn.Tanh, 
+                ScaleAct, AddAct
+        ]
+
+    i = torch.randint(0, len(acts), (1,))
+    act = acts[i]
+    if acts[i] == ScaleAct or acts[i] == AddAct:
+        return act(device)
+    return act()
+
+
 def get_graph_info(graph):
     input_nodes = []
     output_nodes = []
@@ -79,7 +98,6 @@ def build_random_graph(nodes, input_nodes, output_nodes, p, k):
                 #output node
                 out_node = np.random.choice(np.arange(nodes, nodes+output_nodes))
                 g.add_edge(node, out_node)
-                #print ('output', node, 'edge: ', node, out_node)
         for out_node in range(nodes, nodes+output_nodes):
             if g.degree[out_node] == 0:
                 g.add_edge(np.random.choice(np.arange(nodes//2, nodes)), out_node)
@@ -104,23 +122,10 @@ def plot_graph(g, path=None, plot=False):
     plt.close('all')
 
 
-def randact(activation_set='large'):
-    if activation_set == 'large':
-        acts = [nn.ELU, nn.Hardtanh, nn.LeakyReLU, nn.LogSigmoid,
-                nn.SELU, nn.GELU, nn.CELU, nn.Softshrink, nn.Sigmoid,
-                SinLayer, CosLayer, nn.Softplus, nn.Mish, nn.Tanh, Gaussian, ScaleAct, AddAct]
-    else:
-        acts = [nn.Sigmoid, SinLayer, CosLayer, Gaussian, nn.Softplus, nn.Mish,
-                nn.Tanh, ScaleAct, AddAct]
-
-    x = torch.randint(0, len(acts), (1,))
-    return acts[x]()
-
-
 class ScaleOp(nn.Module):
-    def __init__(self):
+    def __init__(self, device):
         super(ScaleOp, self).__init__()
-        r = torch.ones(1,).uniform_(-1, 1)
+        r = torch.ones(1, device=device).uniform_(-1, 1)
         self.r = nn.Parameter(r)
 
     def forward(self, x):
@@ -128,9 +133,9 @@ class ScaleOp(nn.Module):
 
 
 class AddOp(nn.Module):
-    def __init__(self):
+    def __init__(self, device):
         super(AddOp, self).__init__()
-        r = torch.ones(1,).uniform_(-.5, .5)
+        r = torch.ones(1, device=device).uniform_(-.5, .5)
         self.r = nn.Parameter(r)
 
     def forward(self, x):
@@ -138,20 +143,20 @@ class AddOp(nn.Module):
     
 
 class LinearActOp(nn.Module):
-    def __init__(self, in_d, out_d, actset):
+    def __init__(self, in_d, out_d, actset, device):
         super(LinearActOp, self).__init__()
         self.linear = nn.Linear(in_d, out_d)
-        self.act = randact(actset)
+        self.act = randact(actset, device)
 
     def forward(self, x):
         return self.act(self.linear(x))
 
 
 class ConvActOp(nn.Module):
-    def __init__(self, in_d, out_d, actset):
+    def __init__(self, in_d, out_d, actset, device):
         super(ConvActOp, self).__init__()
         self.conv = nn.Conv2d(in_d, out_d, kernel_size=1, stride=1)
-        self.act = randact(actset)
+        self.act = randact(actset, device)
 
     def forward(self, x):
         x = x.reshape(x.size(0), x.size(1), 1, 1)
@@ -161,17 +166,17 @@ class ConvActOp(nn.Module):
 
 
 class RandOp(nn.Module):
-    def __init__(self, in_dim, out_dim, actset):
+    def __init__(self, in_dim, out_dim, actset, device):
         super(RandOp, self).__init__()
         r_id = torch.randint(0, 4, size=(1,))
         if r_id == 0:
-            self.op = ScaleOp()
+            self.op = ScaleOp(device)
         elif r_id == 1:
-            self.op = AddOp()
+            self.op = AddOp(device)
         elif r_id == 2:
-            self.op = LinearActOp(in_dim, out_dim, actset)
+            self.op = LinearActOp(in_dim, out_dim, actset, device)
         elif r_id == 3:
-            self.op = ConvActOp(in_dim, out_dim, actset)
+            self.op = ConvActOp(in_dim, out_dim, actset, device)
         else:
             raise ValueError
 
@@ -180,23 +185,23 @@ class RandOp(nn.Module):
 
             
 class RandNodeOP(nn.Module):
-    def __init__(self, node, in_dim, out_dim, actset):
+    def __init__(self, node, in_dim, out_dim, actset, device):
         super(RandNodeOP, self).__init__()
         self.is_input_node = Node.type == 0
         self.input_nums = len(node.inputs)
         if self.input_nums > 1:
-            self.mean_weight = nn.Parameter(torch.ones(self.input_nums))
-            self.sigmoid = nn.Sigmoid()
-        self.op = RandOp(in_dim, out_dim, actset)
+            self.mean_weight = nn.Parameter(torch.ones(self.input_nums, device=device))
+            self.sigmoid = nn.Tanh() # nn.Sigmoid()
+        self.op = RandOp(in_dim, out_dim, actset, device)
 
     #TODO test this
     def forward(self, *input):
         if self.input_nums > 1:
-            #out = self.sigmoid(self.mean_weight[0]) * input[0]
-            out = input[0]
+            out = self.sigmoid(self.mean_weight[0]) * input[0]
+            #out = input[0]
         for i in range(1, self.input_nums):
-            #out = out + self.sigmoid(self.mean_weight[i]) * input[i]
-            out = out + input[i]
+            out = out + self.sigmoid(self.mean_weight[i]) * input[i]
+            #out = out + input[i]
         else:
             out = input[0]
         out = self.op(out)
@@ -204,20 +209,19 @@ class RandNodeOP(nn.Module):
 
 
 class TorchGraph(nn.Module):
-    def __init__(self, graph, in_dim, hidden_dim, out_dim, combine, activation_set):
+    def __init__(self, graph, in_dim, hidden_dim, out_dim, combine, activation_set, device):
         super(TorchGraph, self).__init__()
         self.nodes, self.input_nodes, self.output_nodes = get_graph_info(graph)
         self.combine = combine
         self.node_ops = nn.ModuleList()
         for node in self.nodes:
-            self.node_ops.append(RandNodeOP(node, in_dim, hidden_dim, activation_set))
+            self.node_ops.append(RandNodeOP(node, in_dim, hidden_dim, activation_set, device))
         if combine:
             self.linear_out = nn.Linear(hidden_dim, out_dim)
-            self.act_out = randact(activation_set)
+            self.act_out = randact(activation_set, device)
         else:
-            self.linear_out = [nn.Linear(hidden_dim, 1) for _ in range(len(
-                self.output_nodes))]
-            self.act_out = [randact(activation_set) for _ in range(len(self.output_nodes))]
+            self.linear_out = [nn.Linear(hidden_dim, 1) for _ in range(len(self.output_nodes))]
+            self.act_out = [randact(activation_set, device) for _ in range(len(self.output_nodes))]
     
     def forward(self, x):
         out = {}

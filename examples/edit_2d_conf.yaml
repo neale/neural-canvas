@@ -18,6 +18,6 @@ regen_x_dim: 2000
 regen_y_dim: 2000
 regen_c_dim: 3
 #save_video_from_frames: True
-regen_image_path: outputs/test_gen
+regen_image_path: '/home/neale/repos/neural_canvas_datasets/datasets/test' #outputs/test_gen
 #gen_image_2127140_0.tif
-output_dir: outputs/test_regen
+output_dir: outputs/test_regen_datasets
