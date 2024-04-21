@@ -61,44 +61,45 @@ if __name__ == '__main__':
         device = 'cuda'
     else:
         device = 'cpu'
-    print (f'Using device: {device}')
-    if args.random_settings:
-        args.latent_dim = int(np.random.choice([8, 16, 32, 64]))
-        args.latent_scale = float(np.random.choice([.1, .5, 1, 4, 8, 16, 32, 64]))
-        args.mlp_layer_width = int(np.random.choice([16, 32, 64]))
-        args.activations = str(np.random.choice(['fixed', 'random']))
-        args.graph_topology = str(np.random.choice(['simple', 'mlp', 'WS']))
-        args.ws_graph_nodes = int(np.random.choice([8, 16]))#, 32, 64]))
-        args.weight_init = str(np.random.choice(['normal', 'uniform']))
-        args.weight_init_mean = float(np.random.choice([-3, -2, -1, 0, 1, 2, 3]))
-        args.weight_init_std = float(np.random.choice([.5, .85, 1.0, 1.15]))
-        args.weight_init_min = float(np.random.choice([-3, -2, -1]))
-        args.weight_init_max = float(np.random.choice([1, 2, 3]))
-        print (f'Randomly selected settings: {args}')
+    for _ in range(args.num_samples):
+        if args.random_settings:
+            args.latent_dim = int(np.random.choice([8, 16, 32, 64]))
+            args.latent_scale = float(np.random.choice([.1, .5, 1, 4, 8, 16, 32, 64]))
+            args.mlp_layer_width = int(np.random.choice([16, 32, 64]))
+            args.activations = str(np.random.choice(['fixed', 'random']))
+            args.graph_topology = str(np.random.choice(['simple', 'mlp', 'WS']))
+            args.ws_graph_nodes = int(np.random.choice([8, 16, 32, 64]))
+            args.final_activation = np.random.choice(['sigmoid', 'tanh', None])
+            args.weight_init = str(np.random.choice(['normal', 'uniform']))
+            args.weight_init_mean = float(np.random.choice([-3, -2, -1, 0, 1, 2, 3]))
+            args.weight_init_std = float(np.random.choice([.5, .85, 1.0, 1.15]))
+            args.weight_init_min = float(np.random.choice([-3, -2, -1]))
+            args.weight_init_max = float(np.random.choice([1, 2, 3]))
+            print (f'Randomly selected settings: {args}')
 
-    generator = INRF2D(latent_dim=args.latent_dim,
-                       latent_scale=args.latent_scale,
-                       output_shape=(args.x_dim, args.y_dim, args.c_dim),
-                       output_dir=args.output_dir,
-                       tmp_dir=args.tmp_dir,
-                       seed=args.seed if not args.ignore_seed else None,
-                       device=device)
-    
-    generator.init_map_fn(mlp_layer_width=args.mlp_layer_width,
-                          activations=args.activations,
-                          final_activation=args.final_activation,
-                          weight_init=args.weight_init,
-                          num_graph_nodes=args.ws_graph_nodes,
-                          graph_topology=args.graph_topology,
-                          weight_init_mean=args.weight_init_mean,
-                          weight_init_std=args.weight_init_std,
-                          weight_init_min=args.weight_init_min,
-                          weight_init_max=args.weight_init_max,)
-    
-    runner = runner2d.RunnerINRF2D(model=generator,
-                          output_dir=args.output_dir,
-                          save_verbose=False,
-                          skip_blank_generations=True,
-                          colormaps=args.colormaps)
+        generator = INRF2D(latent_dim=args.latent_dim,
+                        latent_scale=args.latent_scale,
+                        output_shape=(args.x_dim, args.y_dim, args.c_dim),
+                        output_dir=args.output_dir,
+                        tmp_dir=args.tmp_dir,
+                        seed=args.seed if not args.ignore_seed else None,
+                        device=device)
+        
+        generator.init_map_fn(mlp_layer_width=args.mlp_layer_width,
+                            activations=args.activations,
+                            final_activation=args.final_activation,
+                            weight_init=args.weight_init,
+                            num_graph_nodes=args.ws_graph_nodes,
+                            graph_topology=args.graph_topology,
+                            weight_init_mean=args.weight_init_mean,
+                            weight_init_std=args.weight_init_std,
+                            weight_init_min=args.weight_init_min,
+                            weight_init_max=args.weight_init_max,)
+        
+        runner = runner2d.RunnerINRF2D(model=generator,
+                            output_dir=args.output_dir,
+                            save_verbose=False,
+                            skip_blank_generations=True,
+                            colormaps=args.colormaps)
 
-    runner.run_frames(num_samples=args.num_samples, splits=1)
+        runner.run_frames(num_samples=1, splits=1)

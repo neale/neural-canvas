@@ -2,7 +2,7 @@
 
 noise_dim: 8
 noise_scale: 4
-num_samples: 1
+num_samples: 10000
 x_dim: 512
 y_dim: 512
 c_dim: 3
@@ -11,10 +11,11 @@ activations: random # fixed random nn.GELU
 final_activation: tanh # sigmoid tanh !!null
 graph_topology: mlp # conv, WS, mlp, simple
 batch_size: 1
-# use_gpu: True
+use_gpu: True
 ws_graph_nodes: 64
 weight_init: normal # normal uniform, dip, siren
-output_dir: outputs/test_gen
+output_dir: /home/neale/repos/neural_canvas_datasets/datasets/rlhf_dataset3
+# 'outputs/test_gen
 tmp_dir: tmp/
 
 seed: 62

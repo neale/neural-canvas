@@ -429,7 +429,7 @@ class INRF2D(INRFBase):
             frame = frame.permute(0, 2, 3, 1) # [B, C, H, W] -> [B, H, W, C]
 
         self.logger.debug(f'Output Frame Shape: {frame.shape}')
-        return unnormalize_and_numpy(frame, output_activation=self.final_activation)
+        return unnormalize_and_numpy(frame)
 
     def fit(self,
             target,
@@ -523,8 +523,8 @@ class INRF2D(INRFBase):
         frame = frame.permute(0, 2, 3, 1)
         test_frame = test_frame.permute(0, 2, 3, 1)
 
-        frame = unnormalize_and_numpy(frame, self.map_fn.final_activation)
-        test_frame = unnormalize_and_numpy(test_frame, self.map_fn.final_activation)
+        frame = unnormalize_and_numpy(frame)
+        test_frame = unnormalize_and_numpy(test_frame)
         return frame, test_frame, loss_val, latents
 
 
@@ -897,7 +897,7 @@ class INRF3D(INRFBase):
             raise ValueError(f'splits must be >= 1, got {splits}')
         volume = volume.reshape(output_shape)
         if unnormalize_output:
-            volume = unnormalize_and_numpy(volume, self.map_fn.final_activation)
+            volume = unnormalize_and_numpy(volume)
         self.logger.debug(f'Output Frame Shape: {volume.shape}')
         return volume
 
@@ -962,6 +962,6 @@ class INRF3D(INRFBase):
                 scheduler.step()
         test_frame = self.map_fn(test_fields, test_latents)
         test_frame = test_frame.reshape(test_resolution)
-        test_frame = unnormalize_and_numpy(test_frame, self.map_fn.final_activation)
-        frame = unnormalize_and_numpy(frame, self.map_fn.final_activation)
+        test_frame = unnormalize_and_numpy(test_frame)
+        frame = unnormalize_and_numpy(frame)
         return frame, test_frame, loss_val

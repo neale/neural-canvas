@@ -12,6 +12,8 @@ from neural_canvas.utils import utils
 from neural_canvas.utils.positional_encodings import FourierEncoding
 from neural_canvas.losses import losses
 from neural_canvas.models.inrf import INRF2D
+from skimage.filters.rank import entropy
+from skimage.morphology import disk
 
 
 class RunnerINRF2D:
@@ -104,8 +106,13 @@ class RunnerINRF2D:
             if frame.ndim == 4 and frame.shape[0] == 1:
                 frame = frame[0]     
             if self.skip_blank_generations:
-                if np.abs(frame.max() - frame.min()) < 20:
+                if np.abs(frame.max() - frame.min()) < 30:
                     self.logger.info('skipping blank output')
+                    continue
+                img = np.dot(frame, [0.2989, 0.5870, 0.1140]).astype(np.uint8)
+                e = entropy(img, disk(512)).sum()
+                if e < 500000:
+                    self.logger.info('skipping low entropy output')
                     continue
             metadata.append(self.model._metadata(latents))
             if autosave:

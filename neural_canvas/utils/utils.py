@@ -36,7 +36,7 @@ def load_image_as_tensor(path, output_dir='/tmp', device='cpu'):
     write_image(path=target_fn,
         img=(target.permute(0, 2, 3, 1)[0].cpu().numpy()+1)*127.5, suffix='jpg')
     return target
-
+"""
 
 def unnormalize_and_numpy(x, output_activation='tanh'):
     x = x.detach().cpu().numpy()
@@ -46,6 +46,14 @@ def unnormalize_and_numpy(x, output_activation='tanh'):
         x = (x * 255.).astype(np.uint8)
     else:
         x = (x * (255./x.max())).astype(np.uint8)
+    return x
+"""
+def unnormalize_and_numpy(x):
+    x = x.detach().cpu().numpy()
+    x = (x - x.min()) / (x.ptp() + 1e-10)
+    x += (np.random.random(x.shape) - 0.5) * (5.0 / 256)
+    x = np.clip(x, 0, 1)
+    x = (x * 255.).astype(np.uint8)
     return x
 
 
