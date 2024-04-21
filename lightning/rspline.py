@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import splev, splprep
 
-def random_closed_spline_trajectory(n, num_control_points=4, degree=3, dimensions=8):
+def random_closed_spline_trajectory(n, num_control_points=4, degree=5, dimensions=8):
     # Generate random control points within [0, 10) range for 8 dimensions
     random_points = np.random.rand(num_control_points, dimensions) * 10
 
@@ -20,7 +20,7 @@ def random_closed_spline_trajectory(n, num_control_points=4, degree=3, dimension
 
 # Test the function for 8 dimensions
 n = 100  # number of points in the trajectory
-trajectory = random_closed_spline_trajectory(n, dimensions=8)
+trajectory = random_closed_spline_trajectory(n, dimensions=5)
 
 # Plotting only the first two dimensions
 plt.figure(figsize=(8, 5))

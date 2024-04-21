@@ -57,8 +57,9 @@ class DenseNetBackbone(nn.Module):
         self.layer_out = nn.Linear(self.layer_width*(i+2), c_dim) if c_dim else None
     
     def forward(self, x, acts):
-        for layer, act in zip(self.layers, acts):
+        for layer, act in zip(self.layers[:-1], acts[:-1]):
             x = torch.cat([x, act(layer(x))], -1)
+        x = acts[-1](self.layers[-1](x))
         if self.layer_out:
             x = acts[-1](self.layer_out(x))
         return x

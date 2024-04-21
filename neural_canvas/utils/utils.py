@@ -49,6 +49,7 @@ def slerp(z1, z2, n):
         slerp_points.append(zx)
     return slerp_points
 
+
 @torch.no_grad()
 def rspline(z_points, n, degree=3, device='cpu'):
     # Ensure the spline is closed by duplicating the first point at the end
@@ -83,6 +84,34 @@ def rspline(z_points, n, degree=3, device='cpu'):
         zx = {'sample': torch.from_numpy(point).float().to(device), 'sample_shape': z_points[0]['sample_shape']}
         states.append(zx)
     return states
+
+
+@torch.no_grad()
+def lemniscate(z1, z2, n, a=1):
+    t_values = torch.linspace(0, 2 * torch.pi, n + 2)
+    x = a * torch.cos(t_values) / (1 + torch.sin(t_values)**2)
+    y = a * torch.cos(t_values) * torch.sin(t_values) / (1 + torch.sin(t_values)**2)
+    
+    # Normalize x, y to range between the samples in z1 and z2
+    x = x - x.min()
+    x = x / x.max()
+    y = y - y.min()
+    y = y / y.max()
+    
+    # Scale and shift to actual sample values
+    delta_x = z2['sample'] - z1['sample']
+    x_scaled = z1['sample'] + delta_x * x
+    y_scaled = z1['sample'] + delta_x * y
+
+    # Prepare the states array
+    states = []
+    for i in range(n + 2):
+        z = x_scaled[i] + y_scaled[i] * 1j  # Combining x and y components
+        zx = {'sample': z, 'sample_shape': z1['sample_shape']}
+        states.append(zx)
+    
+    return states
+
 
 def load_image_as_tensor(path, output_dir='/tmp', device='cpu'):
     import cv2

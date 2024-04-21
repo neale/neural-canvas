@@ -18,7 +18,6 @@ import atexit
 from select import select
 torch.backends.cudnn.benchmark = True
 
-from torch.profiler import profile, record_function, ProfilerActivity
 
 """
 elif c == 119: # w # pan up
@@ -215,8 +214,12 @@ def sample_from_table(table, sampler, interpolation, n, device='cpu'):
         if len(samples) > 2:
             samples = samples[:2]
         z_schedule = utils.slerp(samples[0], samples[1], n)
+    elif interpolation == 'lemniscate':
+        if len(samples) > 2:
+            samples = samples[:2]
+        z_schedule = utils.lemniscate(samples[0], samples[len(samples)//2], n)
     elif interpolation == 'rspline':
-        z_schedule = utils.rspline(samples, n, degree=3, device=device) 
+        z_schedule = utils.rspline(samples, n, degree=5, device=device) 
     else:
         raise NotImplementedError(f'No {interpolation} function found')
     return z_schedule
@@ -332,7 +335,7 @@ if __name__ == '__main__':
                         pan=(pan_x_curr, pan_y_curr))
                 elif c == 32: # space # generate new latents table
                     print ('[Click Knob2] Generating new latents table...')
-                    table = precompute_latent_table(runner.model, fields)
+                    table = precompute_latent_table(runner.model, fields, args.interpolation)
                     z_schedule = sample_from_table(table, sample_table, args.interpolation, args.num_samples, device)
                 elif c == 93: # ] # clockwise large knob
                     print ('[CW Knob3] Changing weights...')
@@ -343,6 +346,7 @@ if __name__ == '__main__':
                 elif c == 91: # [ # counterclockwise large knob
                     print ('[CCW Knob3] Generate new activations...')
                     runner.model.map_fn.generate_new_acts()
+                    print ('New Activations:', list(runner.model.map_fn.acts))
                 elif c == 59: # ; # click large knob
                     print ('[Click Knob3] Sample new weights...')
                     runner.model.init_map_weights()

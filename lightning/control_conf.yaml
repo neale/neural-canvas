@@ -19,15 +19,15 @@ y_dim: 500
 z_dim: 64
 c_dim: 3
 
-graph_topology: mlp
+graph_topology: WS
 latent_dim: 8
 mlp_layer_width: 16
 weight_init_std: 1.0
 weight_init: normal
-backbone: densenet # straight
+backbone: straight
 num_layers: 4
 lerp_iters: 5
-interpolation: lerp
+interpolation: rspline # lemniscate # lerp
 init_image_path: /home/neale/repos/neural_canvas_datasets/datasets/rlhf_dataset2/good/gen_image_2556785_0.tif
 #gen_image_401048_0.tif
 #gen_image_48686009_0.tif
