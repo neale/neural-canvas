@@ -19,44 +19,6 @@ from select import select
 torch.backends.cudnn.benchmark = True
 
 
-"""
-elif c == 119: # w # pan up
-    print ('[w] Panning up...')
-    pan_x_curr += kb_pan_delta
-    if pan_x_curr == 0:
-        pan_x_curr += kb_pan_delta
-    fields = runner.model.construct_fields(
-        output_shape=(args.x_dim, args.y_dim), 
-        zoom=(zoom_x_curr, zoom_y_curr), 
-        pan=(pan_x_curr, pan_y_curr))
-elif c == 97: # a # pan left
-    print ('[a] Panning left...')
-    pan_y_curr -= kb_pan_delta
-    if pan_y_curr == 0:
-        pan_y_curr -= kb_pan_delta
-    fields = runner.model.construct_fields(
-        output_shape=(args.x_dim, args.y_dim), 
-        zoom=(zoom_x_curr, zoom_y_curr), 
-        pan=(pan_x_curr, pan_y_curr))
-elif c == 115: # s # pan down
-    print ('[s] Panning down...')
-    pan_x_curr -= kb_pan_delta
-    if pan_x_curr == 0:
-        pan_x_curr -= kb_pan_delta
-    fields = runner.model.construct_fields(
-        output_shape=(args.x_dim, args.y_dim), 
-        zoom=(zoom_x_curr, zoom_y_curr), 
-        pan=(pan_x_curr, pan_y_curr))
-elif c == 100: # d # pan right
-    print ('[d] Panning right...')  
-    pan_y_curr += kb_pan_delta
-    if pan_y_curr == 0:
-        pan_y_curr += kb_pan_delta  
-    fields = runner.model.construct_fields(
-        output_shape=(args.x_dim, args.y_dim), 
-        zoom=(zoom_x_curr, zoom_y_curr), 
-        pan=(pan_x_curr, pan_y_curr))
-"""  
 class KBHit:
     def __init__(self):
         """Creates a KBHit object that you can call to do various keyboard things."""
@@ -309,34 +271,70 @@ if __name__ == '__main__':
                     print (f'Total iters: {total_iters}, FPS: {np.array(fps_queue).mean()}')
                     cv2.destroyAllWindows()
                     sys.exit(0)
-                elif c == 43: # + # zoom in
-                    print ('[CW Knob1] Zooming in...')
+                elif c == 9: # w # pan up
+                    print (f'[CW Knob2] Panning up to {pan_x_curr}...')
+                    pan_x_curr += kb_pan_delta
+                    #if pan_x_curr == 0:
+                    #   pan_x_curr += kb_pan_delta
+                    fields = runner.model.construct_fields(
+                        output_shape=(args.x_dim, args.y_dim), 
+                        zoom=(zoom_x_curr, zoom_y_curr), 
+                        pan=(pan_x_curr, pan_y_curr))
+                elif c == 10: # s # pan down
+                    print (f'[s] Panning down to {pan_x_curr}...')
+                    pan_x_curr -= kb_pan_delta
+                    #if pan_x_curr == 0:
+                    #    pan_x_curr -= kb_pan_delta
+                    fields = runner.model.construct_fields(
+                        output_shape=(args.x_dim, args.y_dim), 
+                        zoom=(zoom_x_curr, zoom_y_curr), 
+                        pan=(pan_x_curr, pan_y_curr))
+                elif c == 45: # - # pan left
+                    print (f'[CCW Knob1] Panning left to {pan_y_curr}...')
+                    pan_y_curr -= kb_pan_delta
+                    if pan_y_curr == 0:
+                        pan_y_curr -= kb_pan_delta
+                    fields = runner.model.construct_fields(
+                        output_shape=(args.x_dim, args.y_dim), 
+                        zoom=(zoom_x_curr, zoom_y_curr), 
+                        pan=(pan_x_curr, pan_y_curr))
+                elif c == 43: # + # pan right
+                    pan_y_curr += kb_pan_delta
+                    #if pan_y_curr == 0:
+                    #    pan_y_curr += kb_pan_delta  
+                    print (f'[CW Knob1] Panning right to {pan_y_curr}...')  
+                    fields = runner.model.construct_fields(
+                        output_shape=(args.x_dim, args.y_dim), 
+                        zoom=(zoom_x_curr, zoom_y_curr), 
+                        pan=(pan_x_curr, pan_y_curr))
+                elif c == 42: # * # zoom in
+                    print (f'[CW Knob1] Zooming in to {zoom_x_curr, zoom_y_curr}...')
                     zoom_x_curr *= kb_zoom_alpha
                     zoom_y_curr *= kb_zoom_alpha
                     fields = runner.model.construct_fields(
                         output_shape=(args.x_dim, args.y_dim), 
                         zoom=(zoom_x_curr, zoom_y_curr), 
                         pan=(pan_x_curr, pan_y_curr))
-                elif c == 45: # - # zoom out
-                    print ('[CCW Knob1] Zooming out...')
+                elif c == 32: # space # zoom out
+                    print (f'[CCW Knob1] Zooming out to {zoom_x_curr, zoom_y_curr}...')
                     zoom_x_curr /= kb_zoom_alpha
                     zoom_y_curr /= kb_zoom_alpha
                     fields = runner.model.construct_fields(
                         output_shape=(args.x_dim, args.y_dim), 
                         zoom=(zoom_x_curr, zoom_y_curr), 
                         pan=(pan_x_curr, pan_y_curr))
-                elif c == 42: # * # reset zoom
-                    print ('[Click Knob1] Resetting zoom...')
-                    zoom_x_curr = .5
-                    zoom_y_curr = .5
-                    fields = runner.model.construct_fields(
-                        output_shape=(args.x_dim, args.y_dim), 
-                        zoom=(zoom_x_curr, zoom_y_curr), 
-                        pan=(pan_x_curr, pan_y_curr))
-                elif c == 32: # space # generate new latents table
-                    print ('[Click Knob2] Generating new latents table...')
-                    table = precompute_latent_table(runner.model, fields, args.interpolation)
-                    z_schedule = sample_from_table(table, sample_table, args.interpolation, args.num_samples, device)
+                #elif c == 42: # * # reset zoom
+                #    print ('[Click Knob1] Resetting zoom...')
+                #    zoom_x_curr = .5
+                #    zoom_y_curr = .5
+                #    fields = runner.model.construct_fields(
+                #        output_shape=(args.x_dim, args.y_dim), 
+                #        zoom=(zoom_x_curr, zoom_y_curr), 
+                #        pan=(pan_x_curr, pan_y_curr))
+                #elif c == 32: # space # generate new latents table
+                #    print ('[Click Knob2] Generating new latents table...')
+                #    table = precompute_latent_table(runner.model, fields, args.interpolation)
+                #    z_schedule = sample_from_table(table, sample_table, args.interpolation, args.num_samples, device)
                 elif c == 93: # ] # clockwise large knob
                     print ('[CW Knob3] Changing weights...')
                     runner.model.init_map_weights()

@@ -14,12 +14,12 @@ zoom_scheduler: geometric # linear geometric, cosine, exp, sqrt, sigmoid, cbrt
 # pan_bounds: [1, 100]
 # pan_scheduler: linear  # geometric, cosine, exp, sqrt, sigmoid, cbrt 
 # For regenerating and augmenting images
-x_dim: 500
-y_dim: 500
-z_dim: 64
+x_dim: 128
+y_dim: 128
+z_dim: 128
 c_dim: 3
 
-graph_topology: WS
+graph_topology: mlp
 latent_dim: 8
 mlp_layer_width: 16
 weight_init_std: 1.0
@@ -27,7 +27,7 @@ weight_init: normal
 backbone: straight
 num_layers: 4
 lerp_iters: 5
-interpolation: rspline # lemniscate # lerp
+interpolation: slerp # lemniscate # lerp
 init_image_path: /home/neale/repos/neural_canvas_datasets/datasets/rlhf_dataset2/good/gen_image_2556785_0.tif
 #gen_image_401048_0.tif
 #gen_image_48686009_0.tif
